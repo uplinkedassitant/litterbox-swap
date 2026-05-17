@@ -8,26 +8,29 @@ const headers: HeadersInit = JUP_API_KEY
   : {};
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
-  const res = await fetch(
-    `${JUP_API}/portfolio/v1/positions?wallet=${walletAddress}`,
-    { headers }
-  );
-  if (!res.ok) throw new Error(`Portfolio API error: ${res.status}`);
-  const data = await res.json();
+  try {
+    const res = await fetch(
+      `${JUP_API}/portfolio/v1/positions?wallet=${walletAddress}`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`Portfolio API error: ${res.status}`);
+    const data = await res.json();
 
-  // Extract tokens with positive balances
-  const tokens: Token[] = (data?.tokens || [])
-    .filter((t: { quantity: number }) => t.quantity > 0)
-    .map((t: { mint: string; symbol: string; name: string; decimals: number; logoURI?: string; quantity: number }) => ({
-      mint: t.mint,
-      symbol: t.symbol || 'Unknown',
-      name: t.name || t.symbol || 'Unknown Token',
-      decimals: t.decimals || 0,
-      logoURI: t.logoURI,
-      balance: t.quantity,
-    }));
+    const tokens: Token[] = (data?.tokens || [])
+      .filter((t: { quantity: number }) => t.quantity > 0)
+      .map((t: { mint: string; symbol: string; name: string; decimals: number; logoURI?: string; quantity: number }) => ({
+        mint: t.mint,
+        symbol: t.symbol || 'Unknown',
+        name: t.name || t.symbol || 'Unknown Token',
+        decimals: t.decimals || 0,
+        logoURI: t.logoURI,
+        balance: t.quantity,
+      }));
 
-  return tokens;
+    return tokens;
+  } catch {
+    return [];
+  }
 }
 
 export async function searchTokens(query: string): Promise<Token[]> {
@@ -59,7 +62,7 @@ export async function getTokenPrice(mints: string[]): Promise<Record<string, num
 export async function getSwapQuote(params: {
   inputMint: string;
   outputMint: string;
-  amount: number; // in lamports/smallest unit
+  amount: number;
   slippageBps: number;
   wallet: string;
 }): Promise<SwapQuote> {
@@ -88,20 +91,6 @@ export async function getSwapQuote(params: {
     orderId: data.orderId,
     swapTransaction: data.swapTransaction,
   };
-}
-
-export async function executeSwap(orderId: string, wallet: any): Promise<string> {
-  const res = await fetch(`${JUP_API}/swap/v2/execute`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderId }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Swap execute error ${res.status}: ${err}`);
-  }
-  const data = await res.json();
-  return data.txid || data.signature || '';
 }
 
 export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
