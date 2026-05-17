@@ -2,12 +2,13 @@
 
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useWizard } from '@/lib/WizardContext';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { truncateAddress } from '@/lib/utils';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useEffect, useState } from 'react';
 
 export function StepConnect() {
-  const { publicKey, disconnect, connecting, connected } = useWallet();
+  const { publicKey, disconnect, connected } = useWallet();
   const { setStep, setSelectedTokens } = useWizard();
   const { connection } = useConnection();
   const [solBalance, setSolBalance] = useState<number | null>(null);
@@ -31,14 +32,15 @@ export function StepConnect() {
         {connected ? 'Wallet connected!' : 'Connect a Solana wallet to see your token balances'}
       </p>
 
-      {connecting && (
-        <div className="text-blue-400 text-lg">Connecting...</div>
-      )}
+      {/* This is the wallet adapter's built-in connect button */}
+      <div className="flex justify-center mb-6">
+        <WalletMultiButton className="!bg-blue-600 hover:!bg-blue-500 !text-white !font-semibold !px-6 !py-3 !rounded-xl !text-base" />
+      </div>
 
-      {publicKey && (
-        <div className="mt-6 bg-gray-800 rounded-xl p-4 max-w-sm mx-auto">
+      {connected && (
+        <div className="mt-4 bg-gray-800 rounded-xl p-4 max-w-sm mx-auto">
           <div className="text-gray-400 text-sm mb-1">Connected</div>
-          <div className="text-white font-mono text-lg">{truncateAddress(publicKey.toBase58())}</div>
+          <div className="text-white font-mono text-lg">{truncateAddress(publicKey?.toBase58() ?? '')}</div>
           {solBalance !== null && (
             <div className="text-blue-400 font-medium mt-1">{solBalance.toFixed(4)} SOL</div>
           )}
