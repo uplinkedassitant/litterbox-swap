@@ -9,27 +9,35 @@ const headers: HeadersInit = JUP_API_KEY
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
   try {
+    // Endpoint changed: /positions/{address} (path param, not query)
     const res = await fetch(
-      `${JUP_API}/portfolio/v1/positions?wallet=${walletAddress}`,
+      `${JUP_API}/portfolio/v1/positions/${walletAddress}`,
       { headers }
     );
     if (!res.ok) throw new Error(`Portfolio API error: ${res.status}`);
     const data = await res.json();
 
-    const tokens: Token[] = (data?.tokens || [])
-      .filter((t: { quantity: number }) => t.quantity > 0)
-      .map((t: { mint: string; symbol: string; name: string; decimals: number; logoURI?: string; quantity: number }) => ({
-        mint: t.mint,
-        symbol: t.symbol || 'Unknown',
-        name: t.name || t.symbol || 'Unknown Token',
-        decimals: t.decimals || 0,
-        logoURI: t.logoURI,
-        balance: t.quantity,
-      }));
-
+    // New response structure: data.elements with type='multiple' for wallet balances
+    const tokens: Token[] = [];
+    for (const element of data.elements || []) {
+      if (element.type === 'multiple' && element.label === 'Wallet' && element.data?.tokens) {
+        for (const t of element.data.tokens) {
+          if (t.quantity > 0) {
+            tokens.push({
+              mint: t.mint,
+              symbol: t.symbol || 'Unknown',
+              name: t.name || t.symbol || 'Unknown Token',
+              decimals: t.decimals || 0,
+              logoURI: t.logoURI,
+              balance: t.quantity,
+            });
+          }
+        }
+      }
+    }
     return tokens;
-  } catch {
-    return [];
+  } catch (e: unknown) {
+    throw new Error(e instanceof Error ? e.message : 'Failed to load positions');
   }
 }
 
