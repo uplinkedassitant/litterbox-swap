@@ -9,7 +9,7 @@ const headers: HeadersInit = JUP_API_KEY
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
   try {
-    // Endpoint changed: /positions/{address} (path param, not query)
+    // Try the portfolio positions endpoint
     const res = await fetch(
       `${JUP_API}/portfolio/v1/positions/${walletAddress}`,
       { headers }
@@ -17,9 +17,11 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
     if (!res.ok) throw new Error(`Portfolio API error: ${res.status}`);
     const data = await res.json();
 
-    // New response structure: data.elements with type='multiple' for wallet balances
     const tokens: Token[] = [];
-    for (const element of data.elements || []) {
+
+    // New format: data.elements with type='multiple' for wallet balances
+    const elements = data.elements || [];
+    for (const element of elements) {
       if (element.type === 'multiple' && element.label === 'Wallet' && element.data?.tokens) {
         for (const t of element.data.tokens) {
           if (t.quantity > 0) {
@@ -35,9 +37,77 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
         }
       }
     }
+
+    // If no tokens found in the new format, try legacy format
+    if (tokens.length === 0 && data.tokens && Array.isArray(data.tokens)) {
+      for (const t of data.tokens) {
+        if (t.quantity > 0 || t.amount > 0) {
+          tokens.push({
+            mint: t.mint || t.address,
+            symbol: t.symbol || 'Unknown',
+            name: t.name || t.symbol || 'Unknown Token',
+            decimals: t.decimals || 0,
+            logoURI: t.logoURI,
+            balance: t.quantity || t.amount,
+          });
+        }
+      }
+    }
+
+    // Fallback: if still empty, try wallet token balance endpoint
+    if (tokens.length === 0) {
+      const balRes = await fetch(
+        `${JUP_API}/v6/wallet/${walletAddress}/tokens`,
+        { headers }
+      );
+      if (balRes.ok) {
+        const balData = await balRes.json();
+        const tokenList = balData || [];
+        for (const t of tokenList) {
+          const amount = parseFloat(t.amount || t.uiAmount || '0');
+          if (amount > 0) {
+            tokens.push({
+              mint: t.mint,
+              symbol: t.symbol || t.mint?.slice(0, 6) || 'Unknown',
+              name: t.name || t.symbol || 'Unknown Token',
+              decimals: t.decimals || t.token_info?.decimals || 0,
+              logoURI: t.logoURI || t.icon || t.token_info?.logoURI,
+              balance: amount,
+            });
+          }
+        }
+      }
+    }
+
     return tokens;
   } catch (e: unknown) {
-    throw new Error(e instanceof Error ? e.message : 'Failed to load positions');
+    // Fallback: try the v6 wallet tokens endpoint
+    try {
+      const balRes = await fetch(
+        `${JUP_API}/v6/wallet/${walletAddress}/tokens`,
+        { headers }
+      );
+      if (!balRes.ok) throw new Error(`Fallback also failed: ${balRes.status}`);
+      const balData = await balRes.json();
+      const tokens: Token[] = [];
+      const tokenList = balData || [];
+      for (const t of tokenList) {
+        const amount = parseFloat(t.amount || t.uiAmount || '0');
+        if (amount > 0) {
+          tokens.push({
+            mint: t.mint,
+            symbol: t.symbol || t.mint?.slice(0, 6) || 'Unknown',
+            name: t.name || t.symbol || 'Unknown Token',
+            decimals: t.decimals || t.token_info?.decimals || 0,
+            logoURI: t.logoURI || t.icon || t.token_info?.logoURI,
+            balance: amount,
+          });
+        }
+      }
+      return tokens;
+    } catch {
+      throw new Error(e instanceof Error ? e.message : 'Failed to load positions');
+    }
   }
 }
 
@@ -55,7 +125,7 @@ export async function searchTokens(query: string): Promise<Token[]> {
 export async function getTokenPrice(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
   const res = await fetch(
-    `${JUP_API}/price/v3?ids=${mints.join(',')}`,
+    `${JUP_API}/price/v2?ids=${mints.join(',')}`,
     { headers }
   );
   if (!res.ok) return {};
