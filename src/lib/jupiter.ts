@@ -2,7 +2,7 @@ import { Connection, PublicKey, Commitment } from '@solana/web3.js';
 import { Token, SwapQuote } from '@/types';
 
 const JUP_API = 'https://api.jup.ag';
-const JUP_API_KEY = ''; // Optional: set NEXT_PUBLIC_JUP_API_KEY in env if needed
+const JUP_API_KEY = '';
 
 // Token info cache (Jupiter token list)
 let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
@@ -34,7 +34,7 @@ async function getTokenList(): Promise<Map<string, Token>> {
     const data = await res.json();
     const tokens: Token[] = (data.tokens || []).map((t: any) => ({
       mint: t.address,
-      symbol: t.symbol || t.symbol || 'Unknown',
+      symbol: t.symbol || 'Unknown',
       name: t.name || t.symbol || 'Unknown Token',
       decimals: t.decimals || 0,
       logoURI: t.logoURI || t.icon,
@@ -47,11 +47,9 @@ async function getTokenList(): Promise<Map<string, Token>> {
   }
 }
 
-// Get RPC connection - prefer custom from wallet adapter
+// Get RPC connection
 function getConnection(): Connection {
   if (customConnection) return customConnection;
-  
-  // Fallback to mainnet-beta (the free public RPC)
   return new Connection('https://api.mainnet-beta.solana.com', { commitment: 'confirmed' as Commitment });
 }
 
@@ -73,8 +71,39 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       throw new Error('Invalid wallet address format: ' + walletAddress);
     }
     
+    // Try Jupiter API first (most reliable for portfolio)
+    try {
+      console.log('[Litterbox] Trying Jupiter portfolio API...');
+      const jupRes = await fetch(
+        `${JUP_API}/portfolio/v5/address/${walletAddress}/tokens`,
+        { headers }
+      );
+      
+      if (jupRes.ok) {
+        const jupData = await jupRes.json();
+        console.log('[Litterbox] Jupiter portfolio response:', jupData);
+        
+        if (jupData.tokens && jupData.tokens.length > 0) {
+          const tokens: Token[] = jupData.tokens.map((t: any) => ({
+            mint: t.mint || t.address,
+            symbol: t.symbol || t.symbol || 'Unknown',
+            name: t.name || t.symbol || 'Unknown Token',
+            decimals: t.decimals || 0,
+            logoURI: t.logoURI || t.icon,
+            balance: t.amount || t.uiAmount || 0,
+          })).filter((t: Token) => (t.balance || 0) > 0);
+          
+          console.log('[Litterbox] Found', tokens.length, 'tokens from Jupiter API');
+          return tokens;
+        }
+      }
+    } catch (jupErr) {
+      console.log('[Litterbox] Jupiter portfolio API failed:', jupErr);
+    }
+    
+    // Fallback to direct RPC call
     const connection = getConnection();
-    console.log('[Litterbox] Fetching token accounts for:', walletAddress);
+    console.log('[Litterbox] Fetching token accounts via RPC for:', walletAddress);
 
     // Get all token accounts owned by the wallet
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(

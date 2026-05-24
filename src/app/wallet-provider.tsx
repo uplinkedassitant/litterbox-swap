@@ -6,7 +6,7 @@ import {
   WalletProvider as SolanaWalletProvider,
 } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { CoinbaseWalletAdapter, LedgerWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { PhantomWalletAdapter, CoinbaseWalletAdapter, LedgerWalletAdapter } from '@solana/wallet-adapter-wallets';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -15,6 +15,7 @@ const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.sola
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const wallets = useMemo(() => [
+    new PhantomWalletAdapter(),
     new CoinbaseWalletAdapter(),
     new LedgerWalletAdapter(),
   ], []);
