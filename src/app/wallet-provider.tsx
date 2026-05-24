@@ -7,11 +7,11 @@ import {
 } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter, CoinbaseWalletAdapter, LedgerWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { clusterApiUrl } from '@solana/web3.js';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl('mainnet-beta');
+// Use Ankr as it's one of the most reliable free RPCs
+const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.ankr.com/solana';
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const wallets = useMemo(() => [
