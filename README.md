@@ -1,6 +1,6 @@
 # Litterbox — Batch Swap Wizard
 
-This is a [Next.js](https://nextjs.org) project.
+A Solana token swap application.
 
 ## Getting Started
 
