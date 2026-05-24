@@ -51,15 +51,8 @@ async function getTokenList(): Promise<Map<string, Token>> {
 function getConnection(): Connection {
   if (customConnection) return customConnection;
   
-  // Fallback to public endpoints
-  const fallbackRpcs = [
-    'https://rpc.ankr.com/solana',
-    'https://api.mainnet-beta.solana.com',
-  ];
-  
-  // Just return the first one that works
-  // In production, you'd want a better fallback strategy
-  return new Connection(fallbackRpcs[0], { commitment: 'confirmed' as Commitment });
+  // Fallback to mainnet-beta (the free public RPC)
+  return new Connection('https://api.mainnet-beta.solana.com', { commitment: 'confirmed' as Commitment });
 }
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
