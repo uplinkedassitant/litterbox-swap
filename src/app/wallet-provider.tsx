@@ -10,8 +10,8 @@ import { PhantomWalletAdapter, SolflareWalletAdapter, CoinbaseWalletAdapter, Led
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-// Use Ankr as it's one of the most reliable free RPCs
-const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.ankr.com/solana';
+// Use Solana mainnet-beta RPC
+const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const wallets = useMemo(() => [
