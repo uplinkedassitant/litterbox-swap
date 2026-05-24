@@ -8,86 +8,13 @@ const headers: HeadersInit = JUP_API_KEY
   : {};
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
+  // Try the v6 wallet tokens endpoint first (more reliable, less rate limited)
   try {
-    // Try the portfolio positions endpoint
-    const res = await fetch(
-      `${JUP_API}/portfolio/v1/positions/${walletAddress}`,
+    const balRes = await fetch(
+      `${JUP_API}/v6/wallet/${walletAddress}/tokens`,
       { headers }
     );
-    if (!res.ok) throw new Error(`Portfolio API error: ${res.status}`);
-    const data = await res.json();
-
-    const tokens: Token[] = [];
-
-    // New format: data.elements with type='multiple' for wallet balances
-    const elements = data.elements || [];
-    for (const element of elements) {
-      if (element.type === 'multiple' && element.label === 'Wallet' && element.data?.tokens) {
-        for (const t of element.data.tokens) {
-          if (t.quantity > 0) {
-            tokens.push({
-              mint: t.mint,
-              symbol: t.symbol || 'Unknown',
-              name: t.name || t.symbol || 'Unknown Token',
-              decimals: t.decimals || 0,
-              logoURI: t.logoURI,
-              balance: t.quantity,
-            });
-          }
-        }
-      }
-    }
-
-    // If no tokens found in the new format, try legacy format
-    if (tokens.length === 0 && data.tokens && Array.isArray(data.tokens)) {
-      for (const t of data.tokens) {
-        if (t.quantity > 0 || t.amount > 0) {
-          tokens.push({
-            mint: t.mint || t.address,
-            symbol: t.symbol || 'Unknown',
-            name: t.name || t.symbol || 'Unknown Token',
-            decimals: t.decimals || 0,
-            logoURI: t.logoURI,
-            balance: t.quantity || t.amount,
-          });
-        }
-      }
-    }
-
-    // Fallback: if still empty, try wallet token balance endpoint
-    if (tokens.length === 0) {
-      const balRes = await fetch(
-        `${JUP_API}/v6/wallet/${walletAddress}/tokens`,
-        { headers }
-      );
-      if (balRes.ok) {
-        const balData = await balRes.json();
-        const tokenList = balData || [];
-        for (const t of tokenList) {
-          const amount = parseFloat(t.amount || t.uiAmount || '0');
-          if (amount > 0) {
-            tokens.push({
-              mint: t.mint,
-              symbol: t.symbol || t.mint?.slice(0, 6) || 'Unknown',
-              name: t.name || t.symbol || 'Unknown Token',
-              decimals: t.decimals || t.token_info?.decimals || 0,
-              logoURI: t.logoURI || t.icon || t.token_info?.logoURI,
-              balance: amount,
-            });
-          }
-        }
-      }
-    }
-
-    return tokens;
-  } catch (e: unknown) {
-    // Fallback: try the v6 wallet tokens endpoint
-    try {
-      const balRes = await fetch(
-        `${JUP_API}/v6/wallet/${walletAddress}/tokens`,
-        { headers }
-      );
-      if (!balRes.ok) throw new Error(`Fallback also failed: ${balRes.status}`);
+    if (balRes.ok) {
       const balData = await balRes.json();
       const tokens: Token[] = [];
       const tokenList = balData || [];
@@ -104,11 +31,49 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
           });
         }
       }
-      return tokens;
-    } catch {
-      throw new Error(e instanceof Error ? e.message : 'Failed to load positions');
+      if (tokens.length > 0) return tokens;
     }
+  } catch {
+    // Continue to other methods
   }
+
+  // Try the portfolio v1 endpoint
+  try {
+    const res = await fetch(
+      `${JUP_API}/portfolio/v1/positions/${walletAddress}`,
+      { headers }
+    );
+    
+    if (res.ok) {
+      const data = await res.json();
+      const tokens: Token[] = [];
+
+      // Look for Wallet-type positions (type='multiple', label='Wallet')
+      const elements = data.elements || [];
+      for (const element of elements) {
+        if (element.type === 'multiple' && element.label === 'Wallet' && element.data?.assets) {
+          for (const asset of element.data.assets) {
+            if (asset.type === 'token' && asset.data) {
+              const tokenInfo = data.tokenInfo?.solana?.[asset.data.address];
+              tokens.push({
+                mint: asset.data.address,
+                symbol: tokenInfo?.symbol || asset.data.symbol || 'Unknown',
+                name: tokenInfo?.name || asset.data.name || 'Unknown Token',
+                decimals: tokenInfo?.decimals || asset.data.decimals || 0,
+                logoURI: tokenInfo?.logoURI || asset.data.logoURI,
+                balance: asset.data.amount || 0,
+              });
+            }
+          }
+        }
+      }
+      return tokens;
+    }
+  } catch {
+    // Continue to error
+  }
+
+  throw new Error('Failed to load positions. Try again later or check your RPC.');
 }
 
 export async function searchTokens(query: string): Promise<Token[]> {
