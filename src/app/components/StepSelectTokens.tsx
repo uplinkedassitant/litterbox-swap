@@ -1,19 +1,27 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useWizard } from '@/lib/WizardContext';
-import { getPortfolioPositions } from '@/lib/jupiter';
+import { getPortfolioPositions, setConnection } from '@/lib/jupiter';
 import { Token } from '@/types';
 import { TokenCard } from './TokenCard';
 
 export function StepSelectTokens() {
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
   const { selectedTokens, setSelectedTokens, toggleToken, setStep } = useWizard();
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
+
+  // Set the connection from wallet adapter on mount
+  useEffect(() => {
+    if (connection) {
+      setConnection(connection);
+    }
+  }, [connection]);
 
   const fetchTokens = useCallback(async () => {
     if (!publicKey) return;

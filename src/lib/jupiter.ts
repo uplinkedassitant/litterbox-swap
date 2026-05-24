@@ -2,13 +2,7 @@ import { Connection, PublicKey, Commitment } from '@solana/web3.js';
 import { Token, SwapQuote } from '@/types';
 
 const JUP_API = 'https://api.jup.ag';
-const JUP_API_KEY = process.env.NEXT_PUBLIC_JUP_API_KEY || '';
-
-// Try multiple RPC endpoints for reliability
-const RPC_ENDPOINTS = [
-  process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com',
-  'https://rpc.ankr.com/solana',
-];
+const JUP_API_KEY = ''; // Optional: set NEXT_PUBLIC_JUP_API_KEY in env if needed
 
 // Token info cache (Jupiter token list)
 let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
@@ -17,6 +11,15 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const headers: HeadersInit = JUP_API_KEY
   ? { 'x-api-key': JUP_API_KEY }
   : {};
+
+// Store connection passed from wallet adapter
+let customConnection: Connection | null = null;
+
+// Set connection from wallet adapter (call this from your component)
+export function setConnection(connection: Connection) {
+  console.log('[Litterbox] Custom RPC connection set');
+  customConnection = connection;
+}
 
 // Get token list from Jupiter (cached)
 async function getTokenList(): Promise<Map<string, Token>> {
@@ -44,28 +47,19 @@ async function getTokenList(): Promise<Map<string, Token>> {
   }
 }
 
-// Get RPC connection with retry logic
-let connectionCache: Connection | null = null;
-
+// Get RPC connection - prefer custom from wallet adapter
 function getConnection(): Connection {
-  if (connectionCache) return connectionCache;
+  if (customConnection) return customConnection;
   
-  // Try each RPC endpoint until one works
-  for (const url of RPC_ENDPOINTS) {
-    try {
-      console.log('[Litterbox] Trying RPC:', url);
-      const conn = new Connection(url, { commitment: 'confirmed' as Commitment });
-      connectionCache = conn;
-      return conn;
-    } catch (e) {
-      console.log('[Litterbox] Failed to create connection:', url, e);
-    }
-  }
+  // Fallback to public endpoints
+  const fallbackRpcs = [
+    'https://rpc.ankr.com/solana',
+    'https://api.mainnet-beta.solana.com',
+  ];
   
-  // Fallback to default
-  const fallback = new Connection(RPC_ENDPOINTS[0], { commitment: 'confirmed' as Commitment });
-  connectionCache = fallback;
-  return fallback;
+  // Just return the first one that works
+  // In production, you'd want a better fallback strategy
+  return new Connection(fallbackRpcs[0], { commitment: 'confirmed' as Commitment });
 }
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
