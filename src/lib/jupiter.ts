@@ -1,105 +1,160 @@
+import { Connection, PublicKey } from '@solana/web3.js';
 import { Token, SwapQuote } from '@/types';
 
 const JUP_API = 'https://api.jup.ag';
 const JUP_API_KEY = process.env.NEXT_PUBLIC_JUP_API_KEY || '';
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+// Token info cache (Jupiter token list)
+let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const headers: HeadersInit = JUP_API_KEY
   ? { 'x-api-key': JUP_API_KEY }
   : {};
 
+// Get token list from Jupiter (cached)
+async function getTokenList(): Promise<Map<string, Token>> {
+  const now = Date.now();
+  if (tokenListCache && now - tokenListCache.timestamp < CACHE_TTL) {
+    return new Map(tokenListCache.tokens.map(t => [t.mint, t]));
+  }
+
+  try {
+    const res = await fetch(`${JUP_API}/tokens/v2/token-list`, { headers });
+    if (!res.ok) throw new Error('Failed to load token list');
+    const data = await res.json();
+    const tokens: Token[] = (data.tokens || []).map((t: any) => ({
+      mint: t.address,
+      symbol: t.symbol || t.symbol || 'Unknown',
+      name: t.name || t.symbol || 'Unknown Token',
+      decimals: t.decimals || 0,
+      logoURI: t.logoURI || t.icon,
+    }));
+    tokenListCache = { tokens, timestamp: now };
+    return new Map(tokens.map(t => [t.mint, t]));
+  } catch (e) {
+    console.error('Failed to load token list:', e);
+    return new Map();
+  }
+}
+
+// Get RPC connection
+function getConnection(): Connection {
+  return new Connection(RPC_URL, { commitment: 'confirmed' });
+}
+
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
-  // Try the v6 wallet tokens endpoint first (more reliable, less rate limited)
   try {
-    const balRes = await fetch(
-      `${JUP_API}/v6/wallet/${walletAddress}/tokens`,
-      { headers }
+    const connection = getConnection();
+    const walletPubkey = new PublicKey(walletAddress);
+
+    // Get all token accounts owned by the wallet
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      walletPubkey,
+      { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt') }
     );
-    if (balRes.ok) {
-      const balData = await balRes.json();
-      const tokens: Token[] = [];
-      const tokenList = balData || [];
-      for (const t of tokenList) {
-        const amount = parseFloat(t.amount || t.uiAmount || '0');
-        if (amount > 0) {
-          tokens.push({
-            mint: t.mint,
-            symbol: t.symbol || t.mint?.slice(0, 6) || 'Unknown',
-            name: t.name || t.symbol || 'Unknown Token',
-            decimals: t.decimals || t.token_info?.decimals || 0,
-            logoURI: t.logoURI || t.icon || t.token_info?.logoURI,
-            balance: amount,
-          });
-        }
-      }
-      if (tokens.length > 0) return tokens;
+
+    if (!tokenAccounts.value || tokenAccounts.value.length === 0) {
+      return [];
     }
-  } catch {
-    // Continue to other methods
-  }
 
-  // Try the portfolio v1 endpoint
-  try {
-    const res = await fetch(
-      `${JUP_API}/portfolio/v1/positions/${walletAddress}`,
-      { headers }
-    );
-    
-    if (res.ok) {
-      const data = await res.json();
-      const tokens: Token[] = [];
+    // Get token list for metadata
+    const tokenList = await getTokenList();
 
-      // Look for Wallet-type positions (type='multiple', label='Wallet')
-      const elements = data.elements || [];
-      for (const element of elements) {
-        if (element.type === 'multiple' && element.label === 'Wallet' && element.data?.assets) {
-          for (const asset of element.data.assets) {
-            if (asset.type === 'token' && asset.data) {
-              const tokenInfo = data.tokenInfo?.solana?.[asset.data.address];
-              tokens.push({
-                mint: asset.data.address,
-                symbol: tokenInfo?.symbol || asset.data.symbol || 'Unknown',
-                name: tokenInfo?.name || asset.data.name || 'Unknown Token',
-                decimals: tokenInfo?.decimals || asset.data.decimals || 0,
-                logoURI: tokenInfo?.logoURI || asset.data.logoURI,
-                balance: asset.data.amount || 0,
-              });
-            }
-          }
-        }
+    const tokens: Token[] = [];
+    for (const account of tokenAccounts.value) {
+      const accountData = account.account.data;
+      if ('parsed' in accountData && accountData.parsed) {
+        const info = accountData.parsed.info;
+        const mint = info.mint;
+        const balance = parseFloat(info.tokenAmount?.uiAmountString || info.tokenAmount?.uiAmount || '0');
+
+        // Skip zero balances
+        if (balance <= 0) continue;
+
+        // Look up token metadata
+        const meta = tokenList.get(mint);
+        
+        tokens.push({
+          mint,
+          symbol: meta?.symbol || mint.slice(0, 6),
+          name: meta?.name || meta?.symbol || 'Unknown Token',
+          decimals: meta?.decimals || info.tokenAmount?.decimals || 0,
+          logoURI: meta?.logoURI,
+          balance,
+        });
       }
-      return tokens;
     }
-  } catch {
-    // Continue to error
-  }
 
-  throw new Error('Failed to load positions. Try again later or check your RPC.');
+    // Sort by balance (highest first)
+    tokens.sort((a, b) => (b.balance || 0) - (a.balance || 0));
+
+    return tokens;
+  } catch (e) {
+    console.error('Failed to get portfolio positions:', e);
+    throw new Error(e instanceof Error ? e.message : 'Failed to load token balances');
+  }
 }
 
 export async function searchTokens(query: string): Promise<Token[]> {
   if (!query || query.length < 2) return [];
-  const res = await fetch(
-    `${JUP_API}/tokens/v2/search?query=${encodeURIComponent(query)}`,
-    { headers }
-  );
-  if (!res.ok) throw new Error(`Token search error: ${res.status}`);
-  const data = await res.json();
-  return (data.tokens || []).slice(0, 20);
+  
+  try {
+    // First try Jupiter search
+    const res = await fetch(
+      `${JUP_API}/tokens/v2/search?query=${encodeURIComponent(query)}`,
+      { headers }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return (data.tokens || []).slice(0, 20).map((t: any) => ({
+        mint: t.address,
+        symbol: t.symbol || 'Unknown',
+        name: t.name || t.symbol || 'Unknown Token',
+        decimals: t.decimals || 0,
+        logoURI: t.logoURI || t.icon,
+      }));
+    }
+  } catch {
+    // Fall through
+  }
+
+  // Fallback: search token list
+  const tokenList = await getTokenList();
+  const q = query.toLowerCase();
+  const results: Token[] = [];
+  for (const [, token] of tokenList) {
+    if (
+      token.symbol.toLowerCase().includes(q) ||
+      token.name.toLowerCase().includes(q) ||
+      token.mint.toLowerCase().includes(q)
+    ) {
+      results.push(token);
+    }
+    if (results.length >= 20) break;
+  }
+  return results;
 }
 
 export async function getTokenPrice(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
-  const res = await fetch(
-    `${JUP_API}/price/v2?ids=${mints.join(',')}`,
-    { headers }
-  );
-  if (!res.ok) return {};
-  const data = await res.json();
-  const prices: Record<string, number> = {};
-  for (const [mint, info] of Object.entries(data.data || {})) {
-    prices[mint] = (info as { price?: number }).price || 0;
+  
+  try {
+    const res = await fetch(
+      `${JUP_API}/price/v2?ids=${mints.join(',')}`,
+      { headers }
+    );
+    if (!res.ok) return {};
+    const data = await res.json();
+    const prices: Record<string, number> = {};
+    for (const [mint, info] of Object.entries(data.data || {})) {
+      prices[mint] = (info as { price?: number }).price || 0;
+    }
+    return prices;
+  } catch {
+    return {};
   }
-  return prices;
 }
 
 export async function getSwapQuote(params: {
@@ -110,6 +165,7 @@ export async function getSwapQuote(params: {
   wallet: string;
 }): Promise<SwapQuote> {
   const { inputMint, outputMint, amount, slippageBps, wallet } = params;
+  
   const qs = new URLSearchParams({
     inputMint,
     outputMint,
@@ -137,15 +193,34 @@ export async function getSwapQuote(params: {
 }
 
 export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
+  // Check cache first
+  const tokenList = await getTokenList();
+  if (tokenList.has(mint)) {
+    return tokenList.get(mint)!;
+  }
+
+  // Search Jupiter
   try {
     const res = await fetch(
       `${JUP_API}/tokens/v2/search?query=${mint}`,
       { headers }
     );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.tokens?.find((t: Token) => t.mint === mint) || null;
+    if (res.ok) {
+      const data = await res.json();
+      const token = data.tokens?.find((t: any) => t.address === mint);
+      if (token) {
+        return {
+          mint: token.address,
+          symbol: token.symbol || 'Unknown',
+          name: token.name || token.symbol || 'Unknown Token',
+          decimals: token.decimals || 0,
+          logoURI: token.logoURI || token.icon,
+        };
+      }
+    }
   } catch {
-    return null;
+    // Fall through
   }
+
+  return null;
 }
