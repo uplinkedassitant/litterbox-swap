@@ -1,9 +1,14 @@
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey, Commitment } from '@solana/web3.js';
 import { Token, SwapQuote } from '@/types';
 
 const JUP_API = 'https://api.jup.ag';
 const JUP_API_KEY = process.env.NEXT_PUBLIC_JUP_API_KEY || '';
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+// Try multiple RPC endpoints for reliability
+const RPC_ENDPOINTS = [
+  process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com',
+  'https://rpc.ankr.com/solana',
+];
 
 // Token info cache (Jupiter token list)
 let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
@@ -34,20 +39,55 @@ async function getTokenList(): Promise<Map<string, Token>> {
     tokenListCache = { tokens, timestamp: now };
     return new Map(tokens.map(t => [t.mint, t]));
   } catch (e) {
-    console.error('Failed to load token list:', e);
+    console.error('[Litterbox] Failed to load token list:', e);
     return new Map();
   }
 }
 
-// Get RPC connection
+// Get RPC connection with retry logic
+let connectionCache: Connection | null = null;
+
 function getConnection(): Connection {
-  return new Connection(RPC_URL, { commitment: 'confirmed' });
+  if (connectionCache) return connectionCache;
+  
+  // Try each RPC endpoint until one works
+  for (const url of RPC_ENDPOINTS) {
+    try {
+      console.log('[Litterbox] Trying RPC:', url);
+      const conn = new Connection(url, { commitment: 'confirmed' as Commitment });
+      connectionCache = conn;
+      return conn;
+    } catch (e) {
+      console.log('[Litterbox] Failed to create connection:', url, e);
+    }
+  }
+  
+  // Fallback to default
+  const fallback = new Connection(RPC_ENDPOINTS[0], { commitment: 'confirmed' as Commitment });
+  connectionCache = fallback;
+  return fallback;
 }
 
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
+  console.log('[Litterbox] getPortfolioPositions called with:', walletAddress);
+  
+  if (!walletAddress) {
+    throw new Error('Wallet address is required');
+  }
+  
   try {
+    // Validate address format
+    let walletPubkey: PublicKey;
+    try {
+      walletPubkey = new PublicKey(walletAddress);
+      console.log('[Litterbox] PublicKey created successfully');
+    } catch (e) {
+      console.error('[Litterbox] Invalid wallet address:', e);
+      throw new Error('Invalid wallet address format: ' + walletAddress);
+    }
+    
     const connection = getConnection();
-    const walletPubkey = new PublicKey(walletAddress);
+    console.log('[Litterbox] Fetching token accounts for:', walletAddress);
 
     // Get all token accounts owned by the wallet
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
@@ -55,7 +95,10 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt') }
     );
 
+    console.log('[Litterbox] Raw token accounts response:', tokenAccounts.value?.length || 0, 'accounts');
+
     if (!tokenAccounts.value || tokenAccounts.value.length === 0) {
+      console.log('[Litterbox] No token accounts found');
       return [];
     }
 
@@ -87,13 +130,16 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       }
     }
 
+    console.log('[Litterbox] Found', tokens.length, 'tokens with balance');
+    
     // Sort by balance (highest first)
     tokens.sort((a, b) => (b.balance || 0) - (a.balance || 0));
 
     return tokens;
   } catch (e) {
-    console.error('Failed to get portfolio positions:', e);
-    throw new Error(e instanceof Error ? e.message : 'Failed to load token balances');
+    console.error('[Litterbox] Failed to get portfolio positions:', e);
+    const msg = e instanceof Error ? e.message : 'Failed to load token balances';
+    throw new Error(msg);
   }
 }
 
