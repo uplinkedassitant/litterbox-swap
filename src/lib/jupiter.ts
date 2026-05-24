@@ -16,6 +16,9 @@ const headers: HeadersInit = JUP_API_KEY
 const OUR_RPC = 'https://api.mainnet-beta.solana.com';
 let ourConnection: Connection | null = null;
 
+// Correct SPL Token Program ID
+const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
+
 function getOurConnection(): Connection {
   if (!ourConnection) {
     ourConnection = new Connection(OUR_RPC, { commitment: 'confirmed' as Commitment });
@@ -75,11 +78,12 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
     // Use our own independent connection (NOT Phantom's)
     const connection = getOurConnection();
     console.log('[Litterbox] Fetching token accounts via OUR RPC:', OUR_RPC);
+    console.log('[Litterbox] Using program ID:', TOKEN_PROGRAM_ID);
 
     // Get all token accounts owned by the wallet
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       walletPubkey,
-      { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt') }
+      { programId: new PublicKey(TOKEN_PROGRAM_ID) }
     );
 
     console.log('[Litterbox] Token accounts response:', tokenAccounts.value?.length || 0, 'accounts');
