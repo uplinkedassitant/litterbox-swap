@@ -15,7 +15,8 @@ const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.ankr.com/solana';
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const wallets = useMemo(() => [
-    new PhantomWalletAdapter(),
+    // Phantom with custom RPC to avoid blocked default
+    new PhantomWalletAdapter({ rpcUrl }),
     new SolflareWalletAdapter(),
     new CoinbaseWalletAdapter(),
     new LedgerWalletAdapter(),
