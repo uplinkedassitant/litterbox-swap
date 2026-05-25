@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use public Solana RPC (Helius free tier has limitations)
-const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
+// Use Helius RPC (public RPC is blocked from Vercel)
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
+const SOLANA_RPC = HELIUS_API_KEY 
+  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+  : 'https://api.mainnet-beta.solana.com';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     
     console.log('[RPC Proxy] Method:', body.method);
-    console.log('[RPC Proxy] Params:', JSON.stringify(body.params)?.slice(0, 100));
-    console.log('[RPC Proxy] Using RPC: Solana Public');
+    console.log('[RPC Proxy] Using RPC:', HELIUS_API_KEY ? 'Helius' : 'Solana Public');
 
     const res = await fetch(SOLANA_RPC, {
       method: 'POST',
