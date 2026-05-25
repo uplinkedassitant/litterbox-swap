@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { WalletProvider as WagmiWalletProvider } from '@/app/wallet-provider';
 import { WizardProvider } from '@/lib/WizardContext';
+import { ClientWalletProvider } from '@/app/wallet-provider';
 
 export const metadata: Metadata = {
   title: 'Litterbox — Batch Swap',
@@ -12,11 +12,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
-        <WagmiWalletProvider>
+        <ClientWalletProvider>
           <WizardProvider>
             {children}
           </WizardProvider>
-        </WagmiWalletProvider>
+        </ClientWalletProvider>
       </body>
     </html>
   );

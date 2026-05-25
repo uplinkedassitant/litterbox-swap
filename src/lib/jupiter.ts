@@ -11,25 +11,21 @@ const jupHeaders: HeadersInit = JUP_API_KEY
   ? { 'x-api-key': JUP_API_KEY }
   : {};
 
-// ─── RPC endpoint ─────────────────────────────────────────────────────────────
-// Get a free key at https://dev.helius.xyz
-//
-// Format: https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
-// Fallbacks are tried if the primary RPC fails
+// ─── RPC endpoints ───────────────────────────────────────────────────────────
+// Try public RPCs first (work in browser without API key), then Helius
 
 const CONFIGURED_RPC = process.env.NEXT_PUBLIC_RPC_URL || '';
 
-// Validate and normalise the Helius URL if the user accidentally used ?apikey=
+// Normalise Helius URL if user used ?apikey= instead of ?api-key=
 function normaliseRpcUrl(url: string): string {
   if (!url) return '';
-  // Fix common mistake: ?apikey= → ?api-key=
   return url.replace(/[?&]apikey=/, (match) => match.replace('apikey=', 'api-key='));
 }
 
-const RPC_URL = normaliseRpcUrl(CONFIGURED_RPC);
+const HELIUS_RPC = normaliseRpcUrl(CONFIGURED_RPC);
 
-// Fallback RPCs to try if the primary fails
-const FALLBACK_RPCS = [
+// Public RPCs that work in browser (no API key needed)
+const PUBLIC_RPCS = [
   'https://rpc.ankr.com/solana',
   'https://api.mainnet-beta.solana.com',
 ];
@@ -38,7 +34,7 @@ const FALLBACK_RPCS = [
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
 const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFL6LxiyMeyaTku5eAY';
 
-// ─── RPC helpers (raw JSON-RPC, no @solana/web3.js dependency at runtime) ────
+// ─── RPC helpers ───────────────────────────────────────────────────────────────
 
 async function rpcCall(endpoint: string, method: string, params: unknown[]): Promise<unknown> {
   const res = await fetch(endpoint, {
@@ -46,34 +42,40 @@ async function rpcCall(endpoint: string, method: string, params: unknown[]): Pro
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
+  // 404 = endpoint not found - skip to next RPC immediately
+  if (res.status === 404) {
+    throw new Error('RPC endpoint not found (404)');
+  }
   if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'RPC error');
   return json.result;
 }
 
+// Try public RPCs first (no API key needed), then Helius as last resort
 async function rpcCallWithFallback(method: string, params: unknown[]): Promise<unknown> {
-  const endpoints = RPC_URL ? [RPC_URL, ...FALLBACK_RPCS] : FALLBACK_RPCS;
+  // Try public RPCs first, then Helius if configured
+  const endpoints = HELIUS_RPC 
+    ? [...PUBLIC_RPCS, HELIUS_RPC]
+    : PUBLIC_RPCS;
+
   let lastErr: Error | null = null;
 
   for (const endpoint of endpoints) {
     try {
       const result = await rpcCall(endpoint, method, params);
-      if (endpoint !== RPC_URL && RPC_URL) {
-        console.log(`[Litterbox] Primary RPC failed, using fallback: ${endpoint.slice(0, 40)}…`);
-      }
+      console.log(`[Litterbox] Using RPC: ${endpoint.slice(0, 50)}…`);
       return result;
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
-      console.warn(`[Litterbox] RPC failed (${endpoint.slice(0, 40)}…): HTTP ${err.message}`);
+      console.warn(`[Litterbox] RPC failed (${endpoint.slice(0, 40)}…): ${err.message}`);
       lastErr = err;
     }
   }
 
   throw new Error(
     `All RPCs failed. Last error: ${lastErr?.message}. ` +
-    `Fix: Set NEXT_PUBLIC_RPC_URL to a working Helius URL like ` +
-    `'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY' (get free key at https://dev.helius.xyz)`
+    `Try setting NEXT_PUBLIC_RPC_URL to a working RPC.`
   );
 }
 
@@ -85,7 +87,7 @@ async function getTokenList(): Promise<Map<string, Token>> {
     return new Map(tokenListCache.tokens.map(t => [t.mint, t]));
   }
 
-  // Jupiter "strict" token list — well-known, stable endpoint
+  // Jupiter "strict" token list
   const endpoints = [
     `${JUP_API}/tokens/v1/strict`,
     `${JUP_API}/tokens/v1/all`,
@@ -148,7 +150,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
     allAccounts = [...spl, ...spl2022];
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to fetch token accounts';
-    throw new Error(`RPC error: ${msg}. Check your RPC endpoint (NEXT_PUBLIC_RPC_URL).`);
+    throw new Error(`RPC error: ${msg}`);
   }
 
   console.log('[Litterbox] Raw accounts:', allAccounts.length);
@@ -192,7 +194,6 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
 export async function getTokenPrices(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
   try {
-    // Jupiter Price V2
     const res = await fetch(
       `${JUP_API}/price/v2?ids=${mints.join(',')}`,
       { headers: jupHeaders }
@@ -209,7 +210,6 @@ export async function getTokenPrices(mints: string[]): Promise<Record<string, nu
   }
 }
 
-// Keep old name for compatibility
 export const getTokenPrice = getTokenPrices;
 
 // ─── Token search ─────────────────────────────────────────────────────────────
@@ -217,7 +217,6 @@ export const getTokenPrice = getTokenPrices;
 export async function searchTokens(query: string): Promise<Token[]> {
   if (!query || query.length < 2) return [];
 
-  // Try Jupiter token search endpoints
   const searchEndpoints = [
     `${JUP_API}/tokens/v1/search?query=${encodeURIComponent(query)}&limit=20`,
     `${JUP_API}/tokens/v2/search?query=${encodeURIComponent(query)}`,
@@ -266,7 +265,6 @@ export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
   const tokenList = await getTokenList();
   if (tokenList.has(mint)) return tokenList.get(mint)!;
 
-  // Try direct lookup
   const lookupEndpoints = [
     `${JUP_API}/tokens/v1/${mint}`,
     `${JUP_API}/tokens/v1/search?query=${mint}&limit=5`,
@@ -304,7 +302,7 @@ export async function getSwapQuote(params: {
 }): Promise<SwapQuote> {
   const { inputMint, outputMint, amount, slippageBps, wallet } = params;
 
-  // Jupiter Ultra API (recommended in 2025)
+  // Jupiter Ultra API
   const ultraUrl = `${JUP_API}/ultra/v1/order`;
   const qs = new URLSearchParams({
     inputMint,
