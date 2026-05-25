@@ -1,7 +1,7 @@
 import { Token, SwapQuote } from '@/types';
 
 const JUP_API = 'https://api.jup.ag';
-const JUP_API_KEY = proces…_KEY || '';
+const JUP_API_KEY = process.env.JUP_API_KEY || '';
 
 let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
