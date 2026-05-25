@@ -35,20 +35,38 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
   
   // Use backend proxy with getAssetsByOwner method
   // Helius requires params as object, not array!
-  const result = await rpcCall('getAssetsByOwner', {
-    ownerAddress: walletAddress,
-    options: {
-      showFungible: true,
-      showZeroBalance: false,
-    },
-    limit: 100,
-  }) as { items: any[] };
+  // Need pagination to get all tokens (272+ total, max 100 per page)
+  const allItems: any[] = [];
+  let page = 1;
+  let hasMore = true;
   
-  const items = result?.items ?? [];
-  console.log('[Litterbox] getAssetsByOwner returned:', items.length, 'items');
+  while (hasMore) {
+    const result = await rpcCall('getAssetsByOwner', {
+      ownerAddress: walletAddress,
+      options: {
+        showFungible: true,
+        showZeroBalance: false,
+      },
+      limit: 100,
+      page,
+    }) as { items: any[] };
+    
+    const items = result?.items ?? [];
+    allItems.push(...items);
+    console.log('[Litterbox] getAssetsByOwner page', page, ':', items.length, 'items');
+    
+    // If we got fewer than 100, we're done
+    hasMore = items.length === 100;
+    page++;
+    
+    // Safety limit - don't fetch more than 5 pages
+    if (page > 5) break;
+  }
+  
+  console.log('[Litterbox] getAssetsByOwner total:', allItems.length, 'items');
   
   const tokens: Token[] = [];
-  for (const item of items) {
+  for (const item of allItems) {
     // Filter for fungible tokens only (interface: FungibleToken or FungibleAsset)
     const iface = item.interface;
     if (iface !== 'FungibleToken' && iface !== 'FungibleAsset') continue;
@@ -63,7 +81,9 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
     
     // Get decimals from mint info or supply
     const decimals = tokenInfo.decimals ?? supply?.decimals ?? 0;
-    const balance = tokenInfo.balance ?? supply?.amount ?? 0;
+    // Balance is in token_accounts[0].balance (nested array for DAS API)
+    const tokenAccounts = tokenInfo.token_accounts ?? [];
+    const balance = tokenAccounts[0]?.balance ?? tokenInfo.balance ?? supply?.amount ?? 0;
     
     if (balance <= 0) continue;
     
