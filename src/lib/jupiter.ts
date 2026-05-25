@@ -364,6 +364,7 @@ export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
   const tokenList = await getTokenList();
   if (tokenList.has(mint)) return tokenList.get(mint)!;
 
+  // Try Jupiter token API
   const lookupEndpoints = [
     `${JUP_API}/tokens/v1/${mint}`,
     `${JUP_API}/tokens/v1/search?query=${mint}&limit=5`,
@@ -387,6 +388,32 @@ export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
       continue;
     }
   }
+  
+  // Try DexScreener for metadata fallback (especially for pump.fun tokens)
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+    if (res.ok) {
+      const data = await res.json();
+      const pairs = data.pairs as any[];
+      if (pairs && pairs.length > 0) {
+        const bestPair = pairs[0]; // Use first pair
+        const baseToken = bestPair?.baseToken;
+        if (baseToken) {
+          console.log('[Litterbox] DexScreener metadata for', mint.slice(0,8), ':', baseToken.symbol);
+          return {
+            mint: mint,
+            symbol: baseToken.symbol || 'Unknown',
+            name: baseToken.name || baseToken.symbol || 'Unknown Token',
+            decimals: 0, // DexScreener doesn't provide decimals
+            logoURI: bestPair?.info?.imageUrl || undefined,
+          };
+        }
+      }
+    }
+  } catch {
+    // DexScreener fallback failed
+  }
+  
   return null;
 }
 
