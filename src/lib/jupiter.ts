@@ -35,32 +35,36 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
   
   // Use backend proxy with getAssetsByOwner method
   // Helius requires params as object, not array!
-  // Need pagination to get all tokens (272+ total, max 100 per page)
+  // Need pagination with cursor to get all tokens
   const allItems: any[] = [];
-  let page = 1;
+  let cursor: string | undefined;
   let hasMore = true;
+  let page = 1;
   
   while (hasMore) {
-    const result = await rpcCall('getAssetsByOwner', {
+    const params: any = {
       ownerAddress: walletAddress,
       options: {
         showFungible: true,
         showZeroBalance: false,
       },
       limit: 100,
-      page,
-    }) as { items: any[] };
+    };
+    if (cursor) params.cursor = cursor;
+    
+    const result = await rpcCall('getAssetsByOwner', params) as { items: any[]; cursor?: string };
     
     const items = result?.items ?? [];
     allItems.push(...items);
-    console.log('[Litterbox] getAssetsByOwner page', page, ':', items.length, 'items');
+    cursor = result?.cursor;
+    console.log('[Litterbox] getAssetsByOwner page', page, ':', items.length, 'items, cursor:', cursor ? 'yes' : 'none');
     
-    // If we got fewer than 100, we're done
-    hasMore = items.length === 100;
+    // If no cursor returned, we're done
+    hasMore = !!cursor && items.length === 100;
     page++;
     
-    // Safety limit - don't fetch more than 5 pages
-    if (page > 5) break;
+    // Safety limit
+    if (page > 10) break;
   }
   
   console.log('[Litterbox] getAssetsByOwner total:', allItems.length, 'items');
