@@ -106,18 +106,35 @@ export function StepSelectTokens() {
           <div className="text-xs text-gray-600 mt-1">Querying Solana RPC</div>
         </div>
       ) : error ? (
-        <div className="text-center py-12 bg-gray-800/50 rounded-xl border border-red-500/20">
-          <div className="text-3xl mb-3">⚠️</div>
-          <div className="text-red-400 font-medium mb-1">Failed to load tokens</div>
-          <div className="text-gray-500 text-sm max-w-xs mx-auto">{error}</div>
-          {error.includes('RPC') && (
-            <div className="text-gray-600 text-xs mt-2 max-w-xs mx-auto">
-              Tip: Set <code className="text-blue-400">NEXT_PUBLIC_RPC_URL</code> to a dedicated RPC endpoint (Helius, QuickNode, etc.)
+        <div className="py-8 bg-gray-800/50 rounded-xl border border-red-500/20 px-6">
+          <div className="text-3xl mb-3 text-center">⚠️</div>
+          <div className="text-red-400 font-medium mb-2 text-center">Failed to load tokens</div>
+          {error.includes('No RPC') || error.includes('403') || error.includes('404') || error.includes('CORS') ? (
+            <div className="mt-3 text-left space-y-2">
+              <p className="text-yellow-400 text-sm font-medium">🔧 Fix required: RPC endpoint</p>
+              <p className="text-gray-400 text-xs">In Vercel → Project → Settings → Environment Variables, set:</p>
+              <code className="block bg-gray-900 rounded p-2 text-green-400 text-xs break-all">
+                NEXT_PUBLIC_RPC_URL<br/>
+                https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+              </code>
+              <p className="text-gray-500 text-xs">
+                ⚠️ Use <span className="text-blue-400">?api-key=</span> (with hyphen), not <span className="text-red-400">?apikey=</span>
+              </p>
+              <a
+                href="https://dev.helius.xyz"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-blue-400 hover:underline text-xs"
+              >
+                Get a free Helius key →
+              </a>
             </div>
+          ) : (
+            <div className="text-gray-500 text-sm text-center max-w-xs mx-auto">{error}</div>
           )}
           <button
             onClick={fetchTokens}
-            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+            className="mt-4 w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
           >
             Try Again
           </button>
