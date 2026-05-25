@@ -18,7 +18,7 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   const res = await fetch(RPC_PROXY, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: '1', method, params }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => 'Unknown error');

@@ -10,6 +10,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     
+    // Helius requires string id, not number
+    if (body.id && typeof body.id === 'number') {
+      body.id = String(body.id);
+    }
+    
     console.log('[RPC Proxy] Method:', body.method);
     console.log('[RPC Proxy] HELIUS_API_KEY set:', !!HELIUS_API_KEY);
     console.log('[RPC Proxy] Key prefix:', HELIUS_API_KEY?.slice(0, 8) || 'none');
