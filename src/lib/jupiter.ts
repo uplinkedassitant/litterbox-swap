@@ -56,10 +56,14 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
     const mint = item.id;
     const content = item.content?.metadata ?? {};
     const supply = item.supply ?? {};
+    const tokenInfo = item.token_info ?? {};
+    
+    // Debug: log structure
+    console.log('[Litterbox]   Token info - iface:', iface, 'mint:', mint.slice(0,8), 'token_info:', JSON.stringify(tokenInfo).slice(0,100));
     
     // Get decimals from mint info or supply
-    const decimals = item.token_info?.decimals ?? supply?.decimals ?? 0;
-    const balance = item.token_info?.balance ?? supply?.amount ?? 0;
+    const decimals = tokenInfo.decimals ?? supply?.decimals ?? 0;
+    const balance = tokenInfo.balance ?? supply?.amount ?? 0;
     
     if (balance <= 0) continue;
     
