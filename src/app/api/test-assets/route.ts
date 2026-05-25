@@ -9,8 +9,20 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const wallet = searchParams.get('wallet') || '2QDF1kVsvDWrnPcTw7hSr9BBZCxVpi2Tw8o3XqmMXYME';
   
+  return NextResponse.json({
+    HELIUS_API_KEY_set: !!HELIUS_API_KEY,
+    HELIUS_API_KEY_prefix: HELIUS_API_KEY?.slice(0, 8) || 'none',
+    SOLANA_RPC: SOLANA_RPC.replace(HELIUS_API_KEY, 'XXXX'),
+    wallet,
+  });
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const body = {
+    const body = await req.json();
+    const wallet = body.params?.[0]?.ownerAddress || '2QDF1kVsvDWrnPcTw7hSr9BBZCxVpi2Tw8o3XqmMXYME';
+    
+    const requestBody = {
       jsonrpc: '2.0',
       id: 1,
       method: 'getAssetsByOwner',
@@ -27,44 +39,19 @@ export async function GET(req: NextRequest) {
     const res = await fetch(SOLANA_RPC, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
 
     const text = await res.text();
     
-    // Try to parse response
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      return NextResponse.json({ 
-        parse_error: 'Failed to parse response as JSON',
-        response_text: text.slice(0, 500),
-        status: res.status 
-      });
-    }
-    
-    if (data.error) {
-      return NextResponse.json({ 
-        error: data.error,
-        note: 'RPC returned error',
-        result_keys: data.result ? Object.keys(data.result) : 'no result'
-      });
-    }
-
-    // Handle different response formats
-    const items = data.result?.items || [];
-    
+    // Debug: return what we got
     return NextResponse.json({
-      has_result: !!data.result,
-      result_keys: data.result ? Object.keys(data.result) : null,
-      total_items: items.length,
-      first_item_interface: items[0]?.interface || 'none',
-      fungible_tokens: items.filter((i: any) => 
-        i.interface === 'FungibleToken' || i.interface === 'FungibleAsset'
-      ).length,
+      rpc_response_status: res.status,
+      rpc_response_first_300: text.slice(0, 300),
+      rpc_response_is_json: false,
+      trying_to_parse: true,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) });
+    return NextResponse.json({ exception: String(error) });
   }
 }
