@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use same backend proxy as main app
-const RPC_PROXY = '/api/rpc';
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
+const SOLANA_RPC = HELIUS_API_KEY 
+  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+  : 'https://api.mainnet-beta.solana.com';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -22,7 +24,7 @@ export async function GET(req: NextRequest) {
       }],
     };
 
-    const res = await fetch(RPC_PROXY, {
+    const res = await fetch(SOLANA_RPC, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
