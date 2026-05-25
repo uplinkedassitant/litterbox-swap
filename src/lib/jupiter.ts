@@ -256,6 +256,10 @@ export async function getSwapQuote(params: {
     if (!quoteRes.ok) {
       const errText = await quoteRes.text();
       console.error('[Litterbox] Quote error:', errText);
+      // Check for common error patterns
+      if (errText.includes('outputMint') || errText.includes('No route found') || errText.includes('not found')) {
+        throw new Error('No swap route found - token may have no liquidity');
+      }
       throw new Error(`Quote error ${quoteRes.status}: ${errText}`);
     }
     const quote = await quoteRes.json();
