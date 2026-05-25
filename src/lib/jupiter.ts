@@ -1,45 +1,38 @@
 import { Token, SwapQuote } from '@/types';
 
 const JUP_API = 'https://api.jup.ag';
-const JUP_API_KEY = process.env.NEXT_PUBLIC_JUP_API_KEY || '';
+const JUP_API_KEY = proces…_KEY || '';
 
 let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 const jupHeaders: HeadersInit = JUP_API_KEY ? { 'x-api-key': JUP_API_KEY } : {};
 
-// Use Solana mainnet-beta public RPC (allows CORS from browsers)
-const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
+// Use backend proxy to avoid CORS issues
+const RPC_PROXY = '/api/rpc';
 
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
 const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFL6LxiyMeyaTku5eAY';
 
-async function rpcCall(endpoint: string, method: string, params: unknown[]): Promise<unknown> {
-  const res = await fetch(endpoint, {
+async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
+  const res = await fetch(RPC_PROXY, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    body: JSON.stringify({ method, params }),
   });
-  if (res.status === 403) {
-    throw new Error('RPC blocked by CORS or domain restriction. Try a different RPC or use a backend proxy.');
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'Unknown error');
+    throw new Error(`RPC proxy error ${res.status}: ${text}`);
   }
-  if (res.status === 404) throw new Error('RPC endpoint not found (404)');
-  if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'RPC error');
   return json.result;
 }
 
 async function rpcCallWithFallback(method: string, params: unknown[]): Promise<unknown> {
-  try {
-    const result = await rpcCall(SOLANA_RPC, method, params);
-    console.log('[Litterbox] Using RPC: Solana mainnet-beta (public)');
-    return result;
-  } catch (e) {
-    const err = e instanceof Error ? e : new Error(String(e));
-    console.error('[Litterbox] Solana RPC failed:', err.message);
-    throw err;
-  }
+  const result = await rpcCall(method, params);
+  console.log('[Litterbox] Using RPC: Backend proxy');
+  return result;
 }
 
 async function getTokenList(): Promise<Map<string, Token>> {
