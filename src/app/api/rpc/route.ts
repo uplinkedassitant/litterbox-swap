@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'RPC proxy error';
     console.error('[RPC Proxy] Exception:', message);
+    console.error('[RPC Proxy] Stack:', error instanceof Error ? error.stack : 'N/A');
     return NextResponse.json({ error: { message } }, { status: 500 });
   }
 }
