@@ -12,12 +12,10 @@ const jupHeaders: HeadersInit = JUP_API_KEY
   : {};
 
 // ─── RPC endpoint ─────────────────────────────────────────────────────────────
-// Public RPCs (Alchemy demo, Ankr free, mainnet-beta) ALL block unauthenticated
-// browser requests with 403 or CORS errors. You MUST set NEXT_PUBLIC_RPC_URL to
-// a Helius key URL:  https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
-//                                                            ^^^^ hyphen, not "apikey"
+// Get a free key at https://dev.helius.xyz
 //
-// Get a free key at https://dev.helius.xyz — no credit card required.
+// Format: https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+// Fallbacks are tried if the primary RPC fails
 
 const CONFIGURED_RPC = process.env.NEXT_PUBLIC_RPC_URL || '';
 
@@ -29,6 +27,12 @@ function normaliseRpcUrl(url: string): string {
 }
 
 const RPC_URL = normaliseRpcUrl(CONFIGURED_RPC);
+
+// Fallback RPCs to try if the primary fails
+const FALLBACK_RPCS = [
+  'https://rpc.ankr.com/solana',
+  'https://api.mainnet-beta.solana.com',
+];
 
 // Token Program IDs (classic + Token-2022)
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
@@ -49,20 +53,28 @@ async function rpcCall(endpoint: string, method: string, params: unknown[]): Pro
 }
 
 async function rpcCallWithFallback(method: string, params: unknown[]): Promise<unknown> {
-  if (!RPC_URL) {
-    throw new Error(
-      'No RPC configured. In Vercel → Settings → Environment Variables, add:\n' +
-      'NEXT_PUBLIC_RPC_URL = https://mainnet.helius-rpc.com/?api-key=YOUR_KEY\n' +
-      'Get a free key at https://dev.helius.xyz'
-    );
+  const endpoints = RPC_URL ? [RPC_URL, ...FALLBACK_RPCS] : FALLBACK_RPCS;
+  let lastErr: Error | null = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const result = await rpcCall(endpoint, method, params);
+      if (endpoint !== RPC_URL && RPC_URL) {
+        console.log(`[Litterbox] Primary RPC failed, using fallback: ${endpoint.slice(0, 40)}…`);
+      }
+      return result;
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.warn(`[Litterbox] RPC failed (${endpoint.slice(0, 40)}…): HTTP ${err.message}`);
+      lastErr = err;
+    }
   }
-  try {
-    return await rpcCall(RPC_URL, method, params);
-  } catch (e) {
-    const err = e instanceof Error ? e : new Error(String(e));
-    console.error(`[Litterbox] RPC call failed (${RPC_URL.slice(0, 50)}…):`, err.message);
-    throw err;
-  }
+
+  throw new Error(
+    `All RPCs failed. Last error: ${lastErr?.message}. ` +
+    `Fix: Set NEXT_PUBLIC_RPC_URL to a working Helius URL like ` +
+    `'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY' (get free key at https://dev.helius.xyz)`
+  );
 }
 
 // ─── Token list ───────────────────────────────────────────────────────────────
