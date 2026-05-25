@@ -36,7 +36,7 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
   // Use backend proxy with getAssetsByOwner method
   const result = await rpcCall('getAssetsByOwner', [{
     ownerAddress: walletAddress,
-    displayOptions: {
+    options: {
       showFungible: true,
       showZeroBalance: false,
     },

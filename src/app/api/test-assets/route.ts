@@ -19,19 +19,22 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const wallet = '2QDF1kVsvDWrnPcTw7hSr9BBZCxVpi2Tw8o3XqmMXYME';
   
+  // Use Helius DAS API format - "options" not "displayOptions"
   const requestBody = {
     jsonrpc: '2.0',
     id: 1,
     method: 'getAssetsByOwner',
     params: [{
       ownerAddress: wallet,
-      displayOptions: {
+      options: {
         showFungible: true,
         showZeroBalance: false,
       },
       limit: 100,
     }],
   };
+
+  console.log('[test-assets] Calling Helius with:', JSON.stringify(requestBody));
 
   try {
     const res = await fetch(SOLANA_RPC, {
@@ -43,8 +46,7 @@ export async function POST(req: NextRequest) {
     });
 
     const text = await res.text();
-    console.log('[test-assets] Status:', res.status);
-    console.log('[test-assets] Response:', text.slice(0, 500));
+    console.log('[test-assets] Status:', res.status, '| Response:', text.slice(0, 500));
     
     let data;
     try {
