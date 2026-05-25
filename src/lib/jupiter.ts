@@ -14,7 +14,7 @@ const RPC_PROXY = '/api/rpc';
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFL6LxiyMeyaTku5eAY';
 
-async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
+async function rpcCall(method: string, params: unknown[] | object): Promise<unknown> {
   const res = await fetch(RPC_PROXY, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -34,14 +34,15 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
   console.log('[Litterbox] Trying getAssetsByOwner for Token2022 support...');
   
   // Use backend proxy with getAssetsByOwner method
-  const result = await rpcCall('getAssetsByOwner', [{
+  // Helius requires params as object, not array!
+  const result = await rpcCall('getAssetsByOwner', {
     ownerAddress: walletAddress,
     options: {
       showFungible: true,
       showZeroBalance: false,
     },
     limit: 100,
-  }]) as { items: any[] };
+  }) as { items: any[] };
   
   const items = result?.items ?? [];
   console.log('[Litterbox] getAssetsByOwner returned:', items.length, 'items');
