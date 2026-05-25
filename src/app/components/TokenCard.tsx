@@ -7,10 +7,12 @@ interface TokenCardProps {
   token: Token;
   selected: boolean;
   onToggle: () => void;
+  usdPrice?: number;
 }
 
-export function TokenCard({ token, selected, onToggle }: TokenCardProps) {
+export function TokenCard({ token, selected, onToggle, usdPrice }: TokenCardProps) {
   const balance = token.balance ?? 0;
+  const usdValue = usdPrice && usdPrice > 0 ? balance * usdPrice : null;
 
   return (
     <div
@@ -21,6 +23,7 @@ export function TokenCard({ token, selected, onToggle }: TokenCardProps) {
           : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
       }`}
     >
+      {/* Checkbox */}
       <div className={`absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
         selected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'
       }`}>
@@ -31,20 +34,31 @@ export function TokenCard({ token, selected, onToggle }: TokenCardProps) {
         )}
       </div>
 
+      {/* Logo */}
       <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center mb-2 overflow-hidden">
         {token.logoURI ? (
-          <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover" />
+          <img
+            src={token.logoURI}
+            alt={token.symbol}
+            className="w-full h-full object-cover"
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
         ) : (
-          <span className="text-lg font-bold text-gray-400">
+          <span className="text-sm font-bold text-gray-400">
             {token.symbol.slice(0, 2).toUpperCase()}
           </span>
         )}
       </div>
 
-      <div className="font-semibold text-white text-sm truncate">{token.symbol}</div>
-      <div className="text-gray-400 text-xs mt-0.5">
+      <div className="font-semibold text-white text-sm truncate pr-6">{token.symbol}</div>
+      <div className="text-gray-400 text-xs mt-0.5 truncate">
         {formatTokenAmount(balance, token.decimals)}
       </div>
+      {usdValue !== null && (
+        <div className="text-green-400 text-xs mt-0.5 font-medium">
+          ≈${usdValue < 0.01 ? '<0.01' : usdValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        </div>
+      )}
     </div>
   );
 }

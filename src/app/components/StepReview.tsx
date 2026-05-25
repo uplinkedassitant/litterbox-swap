@@ -6,7 +6,7 @@ import { useWizard } from '@/lib/WizardContext';
 import { getSwapQuote } from '@/lib/jupiter';
 import { Token, SwapResult } from '@/types';
 import { formatTokenAmount } from '@/lib/utils';
-import { VersionedTransaction } from '@solana/web3.js';
+import { VersionedTransaction, Connection } from '@solana/web3.js';
 
 type SwapStatus = 'idle' | 'in_progress' | 'done';
 
@@ -24,6 +24,10 @@ const SLIPPAGE_OPTIONS = [
   { label: '3%', bps: 300 },
 ];
 
+const RPC_URL =
+  process.env.NEXT_PUBLIC_RPC_URL ||
+  'https://rpc.ankr.com/solana';
+
 export function StepReview() {
   const { publicKey, signTransaction, connected } = useWallet();
   const { selectedTokens, targetToken, slippageBps, setSlippageBps, setSwapResults, resetWizard, setStep } = useWizard();
@@ -39,6 +43,26 @@ export function StepReview() {
     }
   }, [targetToken, selectedTokens, tokenStatuses.length]);
 
+  const sendTransaction = useCallback(async (swapTransaction: string): Promise<string> => {
+    if (!signTransaction || !publicKey) throw new Error('Wallet not connected');
+    const connection = new Connection(RPC_URL, 'confirmed');
+
+    const txBuf = Buffer.from(swapTransaction, 'base64');
+    const tx = VersionedTransaction.deserialize(txBuf);
+    const signed = await signTransaction(tx);
+
+    const rawTx = signed.serialize();
+    const txid = await connection.sendRawTransaction(rawTx, {
+      skipPreflight: false,
+      maxRetries: 3,
+    });
+
+    // Wait for confirmation
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({ signature: txid, blockhash, lastValidBlockHeight }, 'confirmed');
+    return txid;
+  }, [signTransaction, publicKey]);
+
   const executeSwaps = useCallback(async () => {
     if (!publicKey || !signTransaction || !targetToken) return;
     setExecuting(true);
@@ -50,12 +74,13 @@ export function StepReview() {
     for (let i = 0; i < selectedTokens.length; i++) {
       const token = selectedTokens[i];
       setCurrentIndex(i);
-      statuses[i].status = 'in_progress';
+      statuses[i] = { ...statuses[i], status: 'in_progress' };
       setTokenStatuses([...statuses]);
 
       try {
-        const amountRaw = Math.floor((token.balance || 0) * Math.pow(10, token.decimals));
-        if (amountRaw <= 0) throw new Error('No balance');
+        const decimals = token.decimals ?? 0;
+        const amountRaw = Math.floor((token.balance ?? 0) * Math.pow(10, decimals));
+        if (amountRaw <= 0) throw new Error('Zero balance — skip');
 
         const quote = await getSwapQuote({
           inputMint: token.mint,
@@ -65,44 +90,32 @@ export function StepReview() {
           wallet: publicKey.toBase58(),
         });
 
-        if (!quote.swapTransaction) throw new Error('No transaction in quote');
+        if (!quote.swapTransaction) throw new Error('No transaction returned from quote');
 
-        const txBuf = Buffer.from(quote.swapTransaction, 'base64');
-        const tx = VersionedTransaction.deserialize(txBuf);
-        const signed = await signTransaction(tx);
+        const txid = await sendTransaction(quote.swapTransaction);
+        const outputAmt = quote.estimatedOutput / Math.pow(10, targetToken.decimals ?? 0);
 
-        const apiKeyHeader: HeadersInit = {};
-        const apiKey = process.env.NEXT_PUBLIC_JUP_API_KEY;
-        if (apiKey) apiKeyHeader['x-api-key'] = apiKey;
-
-        const res = await fetch('https://api.jup.ag/swap/v2/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...apiKeyHeader },
-          body: JSON.stringify({ orderId: quote.orderId }),
-        });
-
-        if (!res.ok) throw new Error(`Execute failed: ${res.status}`);
-        const data = await res.json();
-        const txid = data.txid || data.signature || 'unknown';
-        const outputAmt = quote.estimatedOutput / Math.pow(10, targetToken.decimals);
-        const doneStatus: PerTokenStatus = { token, status: 'done', txid, outputAmount: outputAmt };
-        statuses[i] = doneStatus;
+        statuses[i] = { token, status: 'done', txid, outputAmount: outputAmt };
         results.push({ token, success: true, txid, outputAmount: outputAmt });
       } catch (e: unknown) {
         const errMsg = e instanceof Error ? e.message : 'Swap failed';
-        const failStatus: PerTokenStatus = { token, status: 'done', error: errMsg };
-        statuses[i] = failStatus;
+        statuses[i] = { token, status: 'done', error: errMsg };
         results.push({ token, success: false, error: errMsg });
       }
 
       setTokenStatuses([...statuses]);
+
+      // Small delay between swaps
+      if (i < selectedTokens.length - 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
     }
 
     setSwapResults(results);
     setDone(true);
     setExecuting(false);
     setCurrentIndex(-1);
-  }, [publicKey, signTransaction, selectedTokens, targetToken, slippageBps, setSwapResults]);
+  }, [publicKey, signTransaction, selectedTokens, targetToken, slippageBps, setSwapResults, sendTransaction]);
 
   const successes = tokenStatuses.filter(s => s.status === 'done' && !s.error).length;
   const failures = tokenStatuses.filter(s => s.error).length;
@@ -116,7 +129,7 @@ export function StepReview() {
             {selectedTokens.length} token{selectedTokens.length !== 1 ? 's' : ''} → {targetToken?.symbol}
           </p>
         </div>
-        {!done && (
+        {!done && !executing && (
           <button onClick={() => setStep('select')} className="text-gray-400 hover:text-white text-sm transition-colors">← Back</button>
         )}
       </div>
@@ -142,33 +155,55 @@ export function StepReview() {
 
       <div className="space-y-2 mb-6">
         {tokenStatuses.map(({ token, status, txid, outputAmount, error }) => (
-          <div key={token.mint} className="bg-gray-800 rounded-xl p-4">
+          <div key={token.mint} className={`bg-gray-800 rounded-xl p-4 border transition-colors ${
+            status === 'in_progress' ? 'border-blue-500/50' :
+            status === 'done' && !error ? 'border-green-500/30' :
+            status === 'done' && error ? 'border-red-500/30' :
+            'border-gray-700'
+          }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {token.logoURI ? (
-                    <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover" />
+                    <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
                     <span className="text-xs font-bold text-gray-400">{token.symbol.slice(0, 2).toUpperCase()}</span>
                   )}
                 </div>
                 <div>
                   <div className="font-semibold text-white text-sm">{token.symbol}</div>
-                  <div className="text-gray-500 text-xs">{formatTokenAmount(token.balance || 0, token.decimals)}</div>
+                  <div className="text-gray-500 text-xs">{formatTokenAmount(token.balance ?? 0, token.decimals)}</div>
                 </div>
               </div>
               <div className="text-right">
                 {status === 'idle' && <span className="text-gray-500 text-sm">Pending</span>}
-                {status === 'in_progress' && <span className="text-blue-400 text-sm animate-pulse">Swapping...</span>}
+                {status === 'in_progress' && (
+                  <span className="text-blue-400 text-sm flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    Swapping…
+                  </span>
+                )}
                 {status === 'done' && !error && (
                   <div>
                     <div className="text-green-400 text-sm font-medium">
-                      +{formatTokenAmount(outputAmount || 0, targetToken?.decimals || 0)} {targetToken?.symbol}
+                      +{formatTokenAmount(outputAmount ?? 0, targetToken?.decimals ?? 0)} {targetToken?.symbol}
                     </div>
-                    {txid && <div className="text-gray-500 text-xs">{txid.slice(0, 6)}...{txid.slice(-4)}</div>}
+                    {txid && (
+                      <a
+                        href={`https://solscan.io/tx/${txid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 text-xs hover:underline"
+                      >
+                        {txid.slice(0, 6)}…{txid.slice(-4)} ↗
+                      </a>
+                    )}
                   </div>
                 )}
-                {status === 'done' && error && <span className="text-red-400 text-sm">❌ {error.slice(0, 50)}</span>}
+                {status === 'done' && error && (
+                  <span className="text-red-400 text-xs max-w-32 text-right block">❌ {error.slice(0, 60)}</span>
+                )}
               </div>
             </div>
           </div>
@@ -185,14 +220,16 @@ export function StepReview() {
               : 'bg-gray-700 text-gray-500 cursor-not-allowed'
           }`}
         >
-          {connected ? `Swap ${selectedTokens.length} Tokens → ${targetToken?.symbol}` : 'Connect Wallet to Swap'}
+          {connected ? `Swap ${selectedTokens.length} Token${selectedTokens.length !== 1 ? 's' : ''} → ${targetToken?.symbol}` : 'Connect Wallet to Swap'}
         </button>
       )}
 
       {executing && (
         <div className="text-center py-6">
-          <div className="text-4xl mb-3 animate-bounce">⚡</div>
-          <div className="text-white font-semibold">Swapping {currentIndex + 1} of {selectedTokens.length}...</div>
+          <div className="inline-block w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <div className="text-white font-semibold">
+            Swapping {currentIndex + 1} of {selectedTokens.length}…
+          </div>
           <div className="text-gray-400 text-sm mt-1">Approve each transaction in your wallet</div>
         </div>
       )}
@@ -203,7 +240,7 @@ export function StepReview() {
           <div className="text-white font-bold text-xl mb-2">Swaps Complete!</div>
           <div className="text-gray-400 mb-6">
             <span className="text-green-400">{successes} succeeded</span>
-            {failures > 0 && <span className="text-red-400"> · {failures} failed</span>}
+            {failures > 0 && <span className="text-red-400 ml-2">· {failures} failed</span>}
           </div>
           <button onClick={resetWizard} className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-semibold transition-colors">
             Swap More Tokens
