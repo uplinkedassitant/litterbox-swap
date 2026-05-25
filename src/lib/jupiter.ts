@@ -246,15 +246,24 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
 export async function getTokenPrices(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
   try {
-    const res = await fetch(`${JUP_API}/price/v2?ids=${mints.join(',')}`, { headers: jupHeaders });
-    if (!res.ok) return {};
-    const data = await res.json();
-    const prices: Record<string, number> = {};
-    for (const [mint, info] of Object.entries(data.data ?? {})) {
-      prices[mint] = (info as any).price ?? 0;
+    // Jupiter Price API v3
+    const ids = mints.join(',');
+    const res = await fetch(`${JUP_API}/price/v3?ids=${ids}`, { headers: jupHeaders });
+    if (!res.ok) {
+      console.log('[Litterbox] Jupiter price API returned:', res.status);
+      return {};
     }
+    const data = await res.json();
+    
+    const prices: Record<string, number> = {};
+    for (const [mint, info] of Object.entries(data)) {
+      // v3 returns: { usdPrice, decimals, priceChange24h }
+      prices[mint] = (info as any).usdPrice ?? 0;
+    }
+    console.log('[Litterbox] Got prices for', Object.keys(prices).length, 'tokens');
     return prices;
-  } catch {
+  } catch (e) {
+    console.log('[Litterbox] getTokenPrices error:', e);
     return {};
   }
 }
