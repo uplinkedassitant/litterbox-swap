@@ -11,6 +11,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     
     console.log('[RPC Proxy] Method:', body.method);
+    console.log('[RPC Proxy] HELIUS_API_KEY set:', !!HELIUS_API_KEY);
+    console.log('[RPC Proxy] Key prefix:', HELIUS_API_KEY?.slice(0, 8) || 'none');
     console.log('[RPC Proxy] Using RPC:', HELIUS_API_KEY ? 'Helius' : 'Solana Public');
 
     const res = await fetch(SOLANA_RPC, {
@@ -21,6 +23,7 @@ export async function POST(req: NextRequest) {
 
     console.log('[RPC Proxy] Response status:', res.status);
     const data = await res.json();
+    console.log('[RPC Proxy] Response:', JSON.stringify(data)?.slice(0, 200));
     
     if (data.error) {
       console.error('[RPC Proxy] RPC error:', JSON.stringify(data.error));
