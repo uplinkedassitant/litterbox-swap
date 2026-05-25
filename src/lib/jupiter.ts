@@ -97,6 +97,7 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
       name: content.name || content.symbol || 'Unknown Token',
       decimals,
       logoURI: item.content?.links?.image ?? item.content?.json_uri,
+      balance, // Add balance field!
     });
   }
   
