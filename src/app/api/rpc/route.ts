@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Server-side env var (not exposed to browser)
-// Vercel: Settings → Environment Variables → Add "HELIUS_RPC_URL"
-const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL;
-const SOLANA_RPC = HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+// Server-side env var: only the API key needed
+// Vercel: Settings → Environment Variables → Add "HELIUS_API_KEY"
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+const SOLANA_RPC = HELIUS_API_KEY 
+  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+  : 'https://api.mainnet-beta.solana.com';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,8 +13,7 @@ export async function POST(req: NextRequest) {
     
     console.log('[RPC Proxy] Method:', body.method);
     console.log('[RPC Proxy] Params:', JSON.stringify(body.params)?.slice(0, 100));
-    console.log('[RPC Proxy] Using RPC:', HELIUS_RPC_URL ? `Helius (${HELIUS_RPC_URL.slice(0, 40)}...)` : 'Solana Public (fallback)');
-    console.log('[RPC Proxy] Full RPC URL:', SOLANA_RPC);
+    console.log('[RPC Proxy] Using RPC:', HELIUS_API_KEY ? 'Helius (mainnet)' : 'Solana Public (fallback)');
 
     const res = await fetch(SOLANA_RPC, {
       method: 'POST',
