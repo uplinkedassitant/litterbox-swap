@@ -11,7 +11,7 @@ const jupHeaders: HeadersInit = JUP_API_KEY ? { 'x-api-key': JUP_API_KEY } : {};
 // Use backend proxy to avoid CORS issues
 const RPC_PROXY = '/api/rpc';
 
-const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
+const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFL6LxiyMeyaTku5eAY';
 
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
