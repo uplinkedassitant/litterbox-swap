@@ -76,10 +76,10 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
   }
 
   const fetchAccounts = async (programId: string) => {
-    const result = await rpcCallWithFallback('getParsedTokenAccountsByOwner', [
+    const result = await rpcCallWithFallback('getTokenAccountsByOwner', [
       walletAddress,
       { programId },
-      { encoding: 'jsonParsed', commitment: 'confirmed' },
+      { encoding: 'jsonParsed' },
     ]) as { value: any[] };
     return result?.value ?? [];
   };
