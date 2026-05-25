@@ -244,6 +244,8 @@ export async function getSwapQuote(params: {
   let res = await fetch(`${ultraUrl}?${qs}`, { headers: jupHeaders });
 
   if (!res.ok) {
+    console.log('[Litterbox] Ultra endpoint failed, trying swap endpoint...');
+    console.log('[Litterbox] Ultra error:', res.status, await res.text());
     const swapQs = new URLSearchParams({
       inputMint,
       outputMint,
@@ -251,7 +253,11 @@ export async function getSwapQuote(params: {
       slippageBps: slippageBps.toString(),
     });
     const quoteRes = await fetch(`${JUP_API}/swap/v1/quote?${swapQs}`, { headers: jupHeaders });
-    if (!quoteRes.ok) throw new Error(`Quote error ${quoteRes.status}: ${await quoteRes.text()}`);
+    if (!quoteRes.ok) {
+      const errText = await quoteRes.text();
+      console.error('[Litterbox] Quote error:', errText);
+      throw new Error(`Quote error ${quoteRes.status}: ${errText}`);
+    }
     const quote = await quoteRes.json();
 
     const swapRes = await fetch(`${JUP_API}/swap/v1/swap`, {
