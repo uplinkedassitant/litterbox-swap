@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
     
     if (data.error) {
       console.error('[RPC Proxy] RPC error:', JSON.stringify(data.error));
-      return NextResponse.json({ error: data.error }, { status: 400 });
+      console.error('[RPC Proxy] Full response:', JSON.stringify(data));
+      console.error('[RPC Proxy] Request body:', JSON.stringify(body));
+      return NextResponse.json({ error: data.error, details: data.error.message }, { status: 400 });
     }
     
     console.log('[RPC Proxy] Success!');
