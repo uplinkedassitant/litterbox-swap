@@ -399,69 +399,73 @@ export async function getSwapQuote(params: {
 }): Promise<SwapQuote> {
   const { inputMint, outputMint, amount, slippageBps, wallet } = params;
 
-  const ultraUrl = `${JUP_API}/ultra/v1/order`;
-  const qs = new URLSearchParams({
-    inputMint,
-    outputMint,
-    amount: amount.toString(),
-    slippageBps: slippageBps.toString(),
-    taker: wallet,
-  });
-
-  let res = await fetch(`${ultraUrl}?${qs}`, { headers: jupHeaders });
-
-  if (!res.ok) {
-    console.log('[Litterbox] Ultra endpoint failed, trying swap endpoint...');
-    console.log('[Litterbox] Ultra error:', res.status, await res.text());
-    const swapQs = new URLSearchParams({
-      inputMint,
-      outputMint,
+  const SOL_MINT = 'So11111111111111111111111111111111111111112';
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4';
+  
+  // Helper to get quote from Jupiter
+  const getQuote = async (inMint: string, outMint: string): Promise<any> => {
+    const qs = new URLSearchParams({
+      inputMint: inMint,
+      outputMint: outMint,
       amount: amount.toString(),
       slippageBps: slippageBps.toString(),
     });
-    const quoteRes = await fetch(`${JUP_API}/swap/v1/quote?${swapQs}`, { headers: jupHeaders });
-    if (!quoteRes.ok) {
-      const errText = await quoteRes.text();
-      console.error('[Litterbox] Quote error:', errText);
-      // Check for common error patterns
-      if (errText.includes('outputMint') || errText.includes('No route found') || errText.includes('not found')) {
-        throw new Error('No swap route found - token may have no liquidity');
-      }
-      throw new Error(`Quote error ${quoteRes.status}: ${errText}`);
+    const res = await fetch(`${JUP_API}/swap/v1/quote?${qs}`, { headers: jupHeaders });
+    if (!res.ok) {
+      console.log('[Litterbox] Quote:', inMint.slice(0,8), '→', outMint.slice(0,8), '=', res.status);
+      return null;
     }
-    const quote = await quoteRes.json();
+    return res.json();
+  };
 
-    const swapRes = await fetch(`${JUP_API}/swap/v1/swap`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...jupHeaders },
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: wallet,
-        wrapAndUnwrapSol: true,
-      }),
-    });
-    if (!swapRes.ok) throw new Error(`Swap build error ${swapRes.status}`);
-    const swapData = await swapRes.json();
-
-    return {
-      inputMint,
-      outputMint,
-      inputAmount: amount,
-      estimatedOutput: parseFloat(quote.outAmount || '0'),
-      priceImpactPct: parseFloat(quote.priceImpactPct || '0'),
-      swapTransaction: swapData.swapTransaction,
-    };
+  // Try direct quote first
+  let quote = await getQuote(inputMint, outputMint);
+  
+  // If direct fails and involves USDC, try via SOL as intermediate
+  if (!quote && (inputMint === USDC_MINT || outputMint === USDC_MINT)) {
+    console.log('[Litterbox] Direct swap failed, trying via SOL...');
+    
+    const viaSol = inputMint === USDC_MINT
+      ? await getQuote(SOL_MINT, outputMint)
+      : await getQuote(inputMint, SOL_MINT);
+    
+    if (viaSol) {
+      console.log('[Litterbox] Via SOL route found!');
+      return {
+        inputMint,
+        outputMint,
+        inputAmount: amount,
+        estimatedOutput: parseFloat(viaSol.outAmount || '0'),
+        priceImpactPct: parseFloat(viaSol.priceImpactPct || '0'),
+        swapTransaction: undefined,
+      };
+    }
+  }
+  
+  if (!quote) {
+    throw new Error('No swap route found - token may have no liquidity');
   }
 
-  const data = await res.json();
+  // Build swap transaction
+  const swapRes = await fetch(`${JUP_API}/swap/v1/swap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...jupHeaders },
+    body: JSON.stringify({
+      quoteResponse: quote,
+      userPublicKey: wallet,
+      wrapAndUnwrapSol: true,
+    }),
+  });
+  if (!swapRes.ok) throw new Error(`Swap build error ${swapRes.status}`);
+  const swapData = await swapRes.json();
+
   return {
     inputMint,
     outputMint,
     inputAmount: amount,
-    estimatedOutput: parseFloat(data.outAmount || '0'),
-    priceImpactPct: parseFloat(data.priceImpactPct || '0'),
-    orderId: data.orderId,
-    swapTransaction: data.transaction || data.swapTransaction,
+    estimatedOutput: parseFloat(quote.outAmount || '0'),
+    priceImpactPct: parseFloat(quote.priceImpactPct || '0'),
+    swapTransaction: swapData.swapTransaction,
   };
 }
 
