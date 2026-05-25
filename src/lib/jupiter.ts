@@ -8,8 +8,8 @@ const CACHE_TTL = 5 * 60 * 1000;
 
 const jupHeaders: HeadersInit = JUP_API_KEY ? { 'x-api-key': JUP_API_KEY } : {};
 
-// Use Ankr RPC (reliable, works in browser, no API key needed)
-const ANKR_RPC = 'https://rpc.ankr.com/solana';
+// Use Solana mainnet-beta public RPC (allows CORS from browsers)
+const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
 
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
 const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFL6LxiyMeyaTku5eAY';
@@ -20,6 +20,9 @@ async function rpcCall(endpoint: string, method: string, params: unknown[]): Pro
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
+  if (res.status === 403) {
+    throw new Error('RPC blocked by CORS or domain restriction. Try a different RPC or use a backend proxy.');
+  }
   if (res.status === 404) throw new Error('RPC endpoint not found (404)');
   if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
   const json = await res.json();
@@ -29,12 +32,12 @@ async function rpcCall(endpoint: string, method: string, params: unknown[]): Pro
 
 async function rpcCallWithFallback(method: string, params: unknown[]): Promise<unknown> {
   try {
-    const result = await rpcCall(ANKR_RPC, method, params);
-    console.log('[Litterbox] Using RPC: Ankr');
+    const result = await rpcCall(SOLANA_RPC, method, params);
+    console.log('[Litterbox] Using RPC: Solana mainnet-beta (public)');
     return result;
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
-    console.warn('[Litterbox] Ankr RPC failed:', err.message);
+    console.error('[Litterbox] Solana RPC failed:', err.message);
     throw err;
   }
 }
