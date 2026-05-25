@@ -3,38 +3,16 @@ import { Token, SwapQuote } from '@/types';
 const JUP_API = 'https://api.jup.ag';
 const JUP_API_KEY = process.env.NEXT_PUBLIC_JUP_API_KEY || '';
 
-// Token info cache
 let tokenListCache: { tokens: Token[]; timestamp: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
 
-const jupHeaders: HeadersInit = JUP_API_KEY
-  ? { 'x-api-key': JUP_API_KEY }
-  : {};
+const jupHeaders: HeadersInit = JUP_API_KEY ? { 'x-api-key': JUP_API_KEY } : {};
 
-// ─── RPC endpoints ───────────────────────────────────────────────────────────
-// Try public RPCs first (work in browser without API key), then Helius
+// Use Ankr RPC (reliable, works in browser, no API key needed)
+const ANKR_RPC = 'https://rpc.ankr.com/solana';
 
-const CONFIGURED_RPC = process.env.NEXT_PUBLIC_RPC_URL || '';
-
-// Normalise Helius URL if user used ?apikey= instead of ?api-key=
-function normaliseRpcUrl(url: string): string {
-  if (!url) return '';
-  return url.replace(/[?&]apikey=/, (match) => match.replace('apikey=', 'api-key='));
-}
-
-const HELIUS_RPC = normaliseRpcUrl(CONFIGURED_RPC);
-
-// Public RPCs that work in browser (no API key needed)
-const PUBLIC_RPCS = [
-  'https://rpc.ankr.com/solana',
-  'https://api.mainnet-beta.solana.com',
-];
-
-// Token Program IDs (classic + Token-2022)
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Gt413sVTt';
 const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFL6LxiyMeyaTku5eAY';
-
-// ─── RPC helpers ───────────────────────────────────────────────────────────────
 
 async function rpcCall(endpoint: string, method: string, params: unknown[]): Promise<unknown> {
   const res = await fetch(endpoint, {
@@ -42,44 +20,24 @@ async function rpcCall(endpoint: string, method: string, params: unknown[]): Pro
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
-  // 404 = endpoint not found - skip to next RPC immediately
-  if (res.status === 404) {
-    throw new Error('RPC endpoint not found (404)');
-  }
+  if (res.status === 404) throw new Error('RPC endpoint not found (404)');
   if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'RPC error');
   return json.result;
 }
 
-// Try public RPCs first (no API key needed), then Helius as last resort
 async function rpcCallWithFallback(method: string, params: unknown[]): Promise<unknown> {
-  // Try public RPCs first, then Helius if configured
-  const endpoints = HELIUS_RPC 
-    ? [...PUBLIC_RPCS, HELIUS_RPC]
-    : PUBLIC_RPCS;
-
-  let lastErr: Error | null = null;
-
-  for (const endpoint of endpoints) {
-    try {
-      const result = await rpcCall(endpoint, method, params);
-      console.log(`[Litterbox] Using RPC: ${endpoint.slice(0, 50)}…`);
-      return result;
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      console.warn(`[Litterbox] RPC failed (${endpoint.slice(0, 40)}…): ${err.message}`);
-      lastErr = err;
-    }
+  try {
+    const result = await rpcCall(ANKR_RPC, method, params);
+    console.log('[Litterbox] Using RPC: Ankr');
+    return result;
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.warn('[Litterbox] Ankr RPC failed:', err.message);
+    throw err;
   }
-
-  throw new Error(
-    `All RPCs failed. Last error: ${lastErr?.message}. ` +
-    `Try setting NEXT_PUBLIC_RPC_URL to a working RPC.`
-  );
 }
-
-// ─── Token list ───────────────────────────────────────────────────────────────
 
 async function getTokenList(): Promise<Map<string, Token>> {
   const now = Date.now();
@@ -87,13 +45,7 @@ async function getTokenList(): Promise<Map<string, Token>> {
     return new Map(tokenListCache.tokens.map(t => [t.mint, t]));
   }
 
-  // Jupiter "strict" token list
-  const endpoints = [
-    `${JUP_API}/tokens/v1/strict`,
-    `${JUP_API}/tokens/v1/all`,
-    'https://token.jup.ag/strict',
-    'https://token.jup.ag/all',
-  ];
+  const endpoints = [`${JUP_API}/tokens/v1/strict`, `${JUP_API}/tokens/v1/all`];
 
   for (const url of endpoints) {
     try {
@@ -120,18 +72,13 @@ async function getTokenList(): Promise<Map<string, Token>> {
   return new Map();
 }
 
-// ─── Portfolio ────────────────────────────────────────────────────────────────
-
 export async function getPortfolioPositions(walletAddress: string): Promise<Token[]> {
   console.log('[Litterbox] getPortfolioPositions:', walletAddress);
   if (!walletAddress) throw new Error('Wallet address required');
-
-  // Validate address (base58, 32–44 chars)
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
     throw new Error('Invalid wallet address format');
   }
 
-  // Fetch token accounts for both classic SPL and Token-2022
   const fetchAccounts = async (programId: string) => {
     const result = await rpcCallWithFallback('getParsedTokenAccountsByOwner', [
       walletAddress,
@@ -145,7 +92,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
   try {
     const [spl, spl2022] = await Promise.all([
       fetchAccounts(TOKEN_PROGRAM_ID),
-      fetchAccounts(TOKEN_2022_PROGRAM_ID).catch(() => []), // Token-2022 optional
+      fetchAccounts(TOKEN_2022_PROGRAM_ID).catch(() => []),
     ]);
     allAccounts = [...spl, ...spl2022];
   } catch (e) {
@@ -155,7 +102,6 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
 
   console.log('[Litterbox] Raw accounts:', allAccounts.length);
 
-  // Get token metadata
   const tokenList = await getTokenList();
 
   const tokens: Token[] = [];
@@ -168,7 +114,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       const uiAmount: number = info.tokenAmount?.uiAmount ?? 0;
       const decimals: number = info.tokenAmount?.decimals ?? 0;
 
-      if (uiAmount <= 0) continue; // skip zero balances
+      if (uiAmount <= 0) continue;
 
       const meta = tokenList.get(mint);
       tokens.push({
@@ -180,7 +126,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
         balance: uiAmount,
       });
     } catch {
-      // skip malformed account
+      // skip malformed
     }
   }
 
@@ -189,15 +135,10 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
   return tokens;
 }
 
-// ─── Token prices ─────────────────────────────────────────────────────────────
-
 export async function getTokenPrices(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
   try {
-    const res = await fetch(
-      `${JUP_API}/price/v2?ids=${mints.join(',')}`,
-      { headers: jupHeaders }
-    );
+    const res = await fetch(`${JUP_API}/price/v2?ids=${mints.join(',')}`, { headers: jupHeaders });
     if (!res.ok) return {};
     const data = await res.json();
     const prices: Record<string, number> = {};
@@ -211,8 +152,6 @@ export async function getTokenPrices(mints: string[]): Promise<Record<string, nu
 }
 
 export const getTokenPrice = getTokenPrices;
-
-// ─── Token search ─────────────────────────────────────────────────────────────
 
 export async function searchTokens(query: string): Promise<Token[]> {
   if (!query || query.length < 2) return [];
@@ -242,7 +181,6 @@ export async function searchTokens(query: string): Promise<Token[]> {
     }
   }
 
-  // Fallback: search cached token list
   const tokenList = await getTokenList();
   const q = query.toLowerCase();
   const results: Token[] = [];
@@ -258,8 +196,6 @@ export async function searchTokens(query: string): Promise<Token[]> {
   }
   return results;
 }
-
-// ─── Token info ───────────────────────────────────────────────────────────────
 
 export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
   const tokenList = await getTokenList();
@@ -291,8 +227,6 @@ export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
   return null;
 }
 
-// ─── Swap quote ───────────────────────────────────────────────────────────────
-
 export async function getSwapQuote(params: {
   inputMint: string;
   outputMint: string;
@@ -302,7 +236,6 @@ export async function getSwapQuote(params: {
 }): Promise<SwapQuote> {
   const { inputMint, outputMint, amount, slippageBps, wallet } = params;
 
-  // Jupiter Ultra API
   const ultraUrl = `${JUP_API}/ultra/v1/order`;
   const qs = new URLSearchParams({
     inputMint,
@@ -314,7 +247,6 @@ export async function getSwapQuote(params: {
 
   let res = await fetch(`${ultraUrl}?${qs}`, { headers: jupHeaders });
 
-  // Fallback to swap/v1
   if (!res.ok) {
     const swapQs = new URLSearchParams({
       inputMint,
@@ -360,7 +292,6 @@ export async function getSwapQuote(params: {
   };
 }
 
-// Legacy compat
 export function setConnection(_: unknown) {
   // no-op
 }
