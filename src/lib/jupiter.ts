@@ -153,6 +153,10 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
   try {
     heliusTokens = await fetchTokensViaHeliusAssets(walletAddress);
     console.log('[Litterbox] Found via getAssetsByOwner:', heliusTokens.length);
+    // Debug: print first few
+    for (const t of heliusTokens.slice(0,3)) {
+      console.log('[Litterbox]   Token:', t.symbol, t.mint.slice(0,12), 'bal:', t.balance);
+    }
   } catch (e) {
     console.log('[Litterbox] getAssetsByOwner failed:', e instanceof Error ? e.message : String(e));
   }
