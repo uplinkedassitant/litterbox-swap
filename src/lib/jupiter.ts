@@ -205,6 +205,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       const decimals: number = info.tokenAmount?.decimals ?? 0;
 
       if (uiAmount <= 0) continue;
+      console.log("[Litterbox] Processing token:", mint.slice(0,8), "amount:", uiAmount);
 
       const meta = tokenList.get(mint);
       tokens.push({

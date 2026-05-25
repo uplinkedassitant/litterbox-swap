@@ -168,7 +168,7 @@ export function StepReview() {
                     <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover"
                       onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
-                    <span className="text-xs font-bold text-gray-400">{token.symbol?.slice(0, 2).toUpperCase()}</span>
+                    <span className="text-xs font-bold text-gray-400">{token.symbol?.slice(0, 2).toUpperCase() || ""}</span>
                   )}
                 </div>
                 <div>

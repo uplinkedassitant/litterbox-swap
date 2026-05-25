@@ -92,7 +92,7 @@ export function StepPickTarget() {
                 {token.logoURI ? (
                   <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-xs font-bold text-gray-400">{token.symbol?.slice(0, 2).toUpperCase()}</span>
+                  <span className="text-xs font-bold text-gray-400">{token.symbol?.slice(0, 2).toUpperCase() || ""}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -129,7 +129,7 @@ export function StepPickTarget() {
               {targetToken.logoURI ? (
                 <img src={targetToken.logoURI} alt={targetToken.symbol} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-lg font-bold text-gray-400">{targetToken.symbol?.slice(0, 2).toUpperCase()}</span>
+                <span className="text-lg font-bold text-gray-400">{targetToken.symbol?.slice(0, 2).toUpperCase() || ""}</span>
               )}
             </div>
             <div>
