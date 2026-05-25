@@ -12,46 +12,76 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     HELIUS_API_KEY_set: !!HELIUS_API_KEY,
     HELIUS_API_KEY_prefix: HELIUS_API_KEY?.slice(0, 8) || 'none',
-    SOLANA_RPC: SOLANA_RPC.replace(HELIUS_API_KEY, 'XXXX'),
     wallet,
   });
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const wallet = body.params?.[0]?.ownerAddress || '2QDF1kVsvDWrnPcTw7hSr9BBZCxVpi2Tw8o3XqmMXYME';
-    
-    const requestBody = {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'getAssetsByOwner',
-      params: [{
-        ownerAddress: wallet,
-        displayOptions: {
-          showFungible: true,
-          showZeroBalance: false,
-        },
-        limit: 100,
-      }],
-    };
+  const wallet = '2QDF1kVsvDWrnPcTw7hSr9BBZCxVpi2Tw8o3XqmMXYME';
+  
+  const requestBody = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'getAssetsByOwner',
+    params: [{
+      ownerAddress: wallet,
+      displayOptions: {
+        showFungible: true,
+        showZeroBalance: false,
+      },
+      limit: 100,
+    }],
+  };
 
+  try {
     const res = await fetch(SOLANA_RPC, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(requestBody),
     });
 
     const text = await res.text();
+    console.log('[test-assets] Status:', res.status);
+    console.log('[test-assets] Response:', text.slice(0, 500));
     
-    // Debug: return what we got
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return NextResponse.json({
+        status: res.status,
+        raw_response: text.slice(0, 500),
+        parse_failed: true,
+      });
+    }
+    
+    if (data.error) {
+      return NextResponse.json({
+        rpc_error: data.error,
+        note: 'Helius returned error'
+      });
+    }
+    
+    const items = data.result?.items || [];
+    const fungible = items.filter((i: any) => 
+      i.interface === 'FungibleToken' || i.interface === 'FungibleAsset'
+    );
+    
     return NextResponse.json({
-      rpc_response_status: res.status,
-      rpc_response_first_300: text.slice(0, 300),
-      rpc_response_is_json: false,
-      trying_to_parse: true,
+      success: true,
+      total_items: items.length,
+      fungible_tokens: fungible.length,
+      sample: fungible.slice(0, 2).map((i: any) => ({
+        mint: i.id,
+        symbol: i.content?.metadata?.symbol,
+        interface: i.interface,
+      })),
     });
   } catch (error) {
-    return NextResponse.json({ exception: String(error) });
+    return NextResponse.json({ 
+      exception: error instanceof Error ? error.message : String(error),
+    });
   }
 }
