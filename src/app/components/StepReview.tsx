@@ -168,7 +168,7 @@ export function StepReview() {
                     <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover"
                       onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
-                    <span className="text-xs font-bold text-gray-400">{token.symbol.slice(0, 2).toUpperCase()}</span>
+                    <span className="text-xs font-bold text-gray-400">{token.symbol?.slice(0, 2).toUpperCase()}</span>
                   )}
                 </div>
                 <div>
@@ -196,13 +196,13 @@ export function StepReview() {
                         rel="noopener noreferrer"
                         className="text-blue-400 text-xs hover:underline"
                       >
-                        {txid.slice(0, 6)}…{txid.slice(-4)} ↗
+                        {txid?.slice(0, 6)}…{txid?.slice(-4)} ↗
                       </a>
                     )}
                   </div>
                 )}
                 {status === 'done' && error && (
-                  <span className="text-red-400 text-xs max-w-32 text-right block">❌ {error.slice(0, 60)}</span>
+                  <span className="text-red-400 text-xs max-w-32 text-right block">❌ {error?.slice(0, 60)}</span>
                 )}
               </div>
             </div>

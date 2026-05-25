@@ -93,11 +93,11 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
     
     tokens.push({
       mint,
-      symbol: content.symbol || mint.slice(0, 6) + '…',
+      symbol: content.symbol || mint?.slice(0, 6) + '…' || 'UNKNOWN',
       name: content.name || content.symbol || 'Unknown Token',
       decimals,
       logoURI: item.content?.links?.image ?? item.content?.json_uri,
-      balance, // Add balance field!
+      balance,
     });
   }
   
@@ -209,7 +209,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       const meta = tokenList.get(mint);
       tokens.push({
         mint,
-        symbol: meta?.symbol || mint.slice(0, 6) + '…',
+        symbol: meta?.symbol || mint?.slice(0, 6) + '…' || 'UNKNOWN',
         name: meta?.name || meta?.symbol || 'Unknown Token',
         decimals: meta?.decimals ?? decimals,
         logoURI: meta?.logoURI,

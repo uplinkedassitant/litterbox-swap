@@ -45,7 +45,7 @@ export function TokenCard({ token, selected, onToggle, usdPrice }: TokenCardProp
           />
         ) : (
           <span className="text-sm font-bold text-gray-400">
-            {token.symbol.slice(0, 2).toUpperCase()}
+            {token.symbol?.slice(0, 2).toUpperCase()}
           </span>
         )}
       </div>
