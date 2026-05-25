@@ -132,6 +132,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
 
   let allAccounts: any[] = [];
   let spl2022Accounts: any[] = [];
+  let heliusTokens: Token[] = [];
   
   try {
     const [spl, spl2022] = await Promise.all([
@@ -142,36 +143,17 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
     spl2022Accounts = spl2022;
     console.log('[Litterbox] SPL accounts:', spl.length, '| Token2022 accounts:', spl2022.length);
   } catch (e) {
-    console.log('[Litterbox] getTokenAccountsByOwner failed, trying getAssetsByOwner:', e);
-    
-    // Try Helius getAssetsByOwner as fallback - handles all token types including Token2022
-    try {
-      const fungibleTokens = await fetchTokensViaHeliusAssets(walletAddress);
-      const tokenList = await getTokenList();
-      
-      // Merge with token list metadata
-      return fungibleTokens.map(t => {
-        const meta = tokenList.get(t.mint);
-        return meta ? { ...t, logoURI: meta.logoURI ?? t.logoURI } : t;
-      });
-    } catch (fallbackError) {
-      console.error('[Litterbox] getAssetsByOwner fallback also failed:', fallbackError);
-      const msg = e instanceof Error ? e.message : 'Failed to fetch token accounts';
-      throw new Error(`RPC error: ${msg}`);
-    }
+    console.log('[Litterbox] getTokenAccountsByOwner failed:', e instanceof Error ? e.message : String(e));
   }
 
-  // If no Token2022 accounts found via getTokenAccountsByOwner, try getAssetsByOwner
-  if (spl2022Accounts.length === 0) {
-    console.log('[Litterbox] No Token2022 accounts found via RPC, trying getAssetsByOwner...');
-    try {
-      const heliusTokens = await fetchTokensViaHeliusAssets(walletAddress);
-      if (heliusTokens.length > 0) {
-        console.log('[Litterbox] Found tokens via getAssetsByOwner:', heliusTokens.length);
-      }
-    } catch (e) {
-      console.log('[Litterbox] getAssetsByOwner optional check failed:', e);
-    }
+  // Always try getAssetsByOwner to catch any tokens missed by getTokenAccountsByOwner
+  // This handles Token2022 tokens that Helius might not return via getTokenAccountsByOwner
+  console.log('[Litterbox] Trying getAssetsByOwner to find any missed tokens...');
+  try {
+    heliusTokens = await fetchTokensViaHeliusAssets(walletAddress);
+    console.log('[Litterbox] Found via getAssetsByOwner:', heliusTokens.length);
+  } catch (e) {
+    console.log('[Litterbox] getAssetsByOwner failed:', e instanceof Error ? e.message : String(e));
   }
 
   console.log('[Litterbox] Raw accounts:', allAccounts.length);
@@ -205,6 +187,24 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
   }
 
   console.log('[Litterbox] Tokens with balance:', tokens.length);
+  
+  // Merge with heliusTokens (Token2022) - deduplicate by mint
+  if (heliusTokens.length > 0) {
+    const existingMints = new Set(tokens.map(t => t.mint));
+    for (const ht of heliusTokens) {
+      if (!existingMints.has(ht.mint)) {
+        const meta = tokenList.get(ht.mint);
+        tokens.push({
+          ...ht,
+          symbol: meta?.symbol ?? ht.symbol,
+          name: meta?.name ?? ht.name,
+          logoURI: meta?.logoURI ?? ht.logoURI,
+        });
+      }
+    }
+    console.log('[Litterbox] Merged Token2022 tokens, total:', tokens.length);
+  }
+  
   tokens.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
   return tokens;
 }
