@@ -245,27 +245,73 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
 
 export async function getTokenPrices(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
+  
+  const prices: Record<string, number> = {};
+  
+  // Try Jupiter Price API v3 first
   try {
-    // Jupiter Price API v3
     const ids = mints.join(',');
     const res = await fetch(`${JUP_API}/price/v3?ids=${ids}`, { headers: jupHeaders });
-    if (!res.ok) {
-      console.log('[Litterbox] Jupiter price API returned:', res.status);
-      return {};
+    if (res.ok) {
+      const data = await res.json();
+      for (const [mint, info] of Object.entries(data)) {
+        const price = (info as any).usdPrice ?? 0;
+        if (price > 0) {
+          prices[mint] = price;
+        }
+      }
     }
-    const data = await res.json();
-    
-    const prices: Record<string, number> = {};
-    for (const [mint, info] of Object.entries(data)) {
-      // v3 returns: { usdPrice, decimals, priceChange24h }
-      prices[mint] = (info as any).usdPrice ?? 0;
-    }
-    console.log('[Litterbox] Got prices for', Object.keys(prices).length, 'tokens');
-    return prices;
   } catch (e) {
-    console.log('[Litterbox] getTokenPrices error:', e);
-    return {};
+    console.log('[Litterbox] Jupiter price API error:', e);
   }
+  
+  // Get mints without prices and try DexScreener as fallback
+  const missingMints = mints.filter(m => !prices[m]);
+  if (missingMints.length > 0) {
+    console.log('[Litterbox] Trying DexScreener for', missingMints.length, 'tokens without prices');
+    try {
+      const dexPrices = await getDexScreenerPrices(missingMints);
+      Object.assign(prices, dexPrices);
+    } catch (e) {
+      console.log('[Litterbox] DexScreener error:', e);
+    }
+  }
+  
+  console.log('[Litterbox] Got prices for', Object.keys(prices).length, 'tokens total');
+  return prices;
+}
+
+// DexScreener fallback for tokens without Jupiter prices
+async function getDexScreenerPrices(mints: string[]): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
+  
+  // DexScreener allows batch queries, try multiple mints
+  for (const mint of mints.slice(0, 10)) { // Limit to 10 at a time
+    try {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+      if (res.ok) {
+        const data = await res.json();
+        const pairs = data.pairs as any[];
+        if (pairs && pairs.length > 0) {
+          // Get the pair with highest liquidity (usually first or SOL pair)
+          const bestPair = pairs.reduce((best, p) => {
+            const bestLiquidity = best?.liquidity?.usd ?? 0;
+            const thisLiquidity = p.liquidity?.usd ?? 0;
+            return thisLiquidity > bestLiquidity ? p : best;
+          }, pairs[0]);
+          
+          if (bestPair?.priceUsd) {
+            prices[mint] = parseFloat(bestPair.priceUsd);
+            console.log('[Litterbox] DexScreener price for', mint.slice(0,8), ':', bestPair.priceUsd);
+          }
+        }
+      }
+    } catch {
+      // Continue to next mint
+    }
+  }
+  
+  return prices;
 }
 
 export const getTokenPrice = getTokenPrices;
