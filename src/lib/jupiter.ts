@@ -29,6 +29,52 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   return json.result;
 }
 
+// Helius getAssetsByOwner returns ALL asset types including fungible tokens
+async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[]> {
+  console.log('[Litterbox] Trying getAssetsByOwner for Token2022 support...');
+  
+  // Use backend proxy with getAssetsByOwner method
+  const result = await rpcCall('getAssetsByOwner', [{
+    ownerAddress: walletAddress,
+    displayOptions: {
+      showFungible: true,
+      showZeroBalance: false,
+    },
+    limit: 100,
+  }]) as { items: any[] };
+  
+  const items = result?.items ?? [];
+  console.log('[Litterbox] getAssetsByOwner returned:', items.length, 'items');
+  
+  const tokens: Token[] = [];
+  for (const item of items) {
+    // Filter for fungible tokens only (interface: FungibleToken or FungibleAsset)
+    const iface = item.interface;
+    if (iface !== 'FungibleToken' && iface !== 'FungibleAsset') continue;
+    
+    const mint = item.id;
+    const content = item.content?.metadata ?? {};
+    const supply = item.supply ?? {};
+    
+    // Get decimals from mint info or supply
+    const decimals = item.token_info?.decimals ?? supply?.decimals ?? 0;
+    const balance = item.token_info?.balance ?? supply?.amount ?? 0;
+    
+    if (balance <= 0) continue;
+    
+    tokens.push({
+      mint,
+      symbol: content.symbol || mint.slice(0, 6) + '…',
+      name: content.name || content.symbol || 'Unknown Token',
+      decimals,
+      logoURI: item.content?.links?.image ?? item.content?.json_uri,
+    });
+  }
+  
+  console.log('[Litterbox] Fungible tokens from getAssetsByOwner:', tokens.length);
+  return tokens;
+}
+
 async function rpcCallWithFallback(method: string, params: unknown[]): Promise<unknown> {
   const result = await rpcCall(method, params);
   console.log('[Litterbox] Using RPC: Backend proxy');
@@ -85,15 +131,47 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
   };
 
   let allAccounts: any[] = [];
+  let spl2022Accounts: any[] = [];
+  
   try {
     const [spl, spl2022] = await Promise.all([
       fetchAccounts(TOKEN_PROGRAM_ID),
       fetchAccounts(TOKEN_2022_PROGRAM_ID).catch(() => []),
     ]);
     allAccounts = [...spl, ...spl2022];
+    spl2022Accounts = spl2022;
+    console.log('[Litterbox] SPL accounts:', spl.length, '| Token2022 accounts:', spl2022.length);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Failed to fetch token accounts';
-    throw new Error(`RPC error: ${msg}`);
+    console.log('[Litterbox] getTokenAccountsByOwner failed, trying getAssetsByOwner:', e);
+    
+    // Try Helius getAssetsByOwner as fallback - handles all token types including Token2022
+    try {
+      const fungibleTokens = await fetchTokensViaHeliusAssets(walletAddress);
+      const tokenList = await getTokenList();
+      
+      // Merge with token list metadata
+      return fungibleTokens.map(t => {
+        const meta = tokenList.get(t.mint);
+        return meta ? { ...t, logoURI: meta.logoURI ?? t.logoURI } : t;
+      });
+    } catch (fallbackError) {
+      console.error('[Litterbox] getAssetsByOwner fallback also failed:', fallbackError);
+      const msg = e instanceof Error ? e.message : 'Failed to fetch token accounts';
+      throw new Error(`RPC error: ${msg}`);
+    }
+  }
+
+  // If no Token2022 accounts found via getTokenAccountsByOwner, try getAssetsByOwner
+  if (spl2022Accounts.length === 0) {
+    console.log('[Litterbox] No Token2022 accounts found via RPC, trying getAssetsByOwner...');
+    try {
+      const heliusTokens = await fetchTokensViaHeliusAssets(walletAddress);
+      if (heliusTokens.length > 0) {
+        console.log('[Litterbox] Found tokens via getAssetsByOwner:', heliusTokens.length);
+      }
+    } catch (e) {
+      console.log('[Litterbox] getAssetsByOwner optional check failed:', e);
+    }
   }
 
   console.log('[Litterbox] Raw accounts:', allAccounts.length);
