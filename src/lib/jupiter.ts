@@ -244,6 +244,18 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
     console.log('[Litterbox] Merged Token2022 tokens, total:', tokens.length);
   }
   
+  // Enrich SPL tokens with metadata from DexScreener (pump.fun tokens)
+  for (const token of tokens) {
+    if (!token.logoURI || !token.name || token.name === 'Unknown Token') {
+      const meta = await getJupiterTokenInfo(token.mint);
+      if (meta) {
+        token.symbol = meta.symbol || token.symbol;
+        token.name = meta.name || token.name;
+        token.logoURI = meta.logoURI || token.logoURI;
+      }
+    }
+  }
+  
   tokens.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
   return tokens;
 }
