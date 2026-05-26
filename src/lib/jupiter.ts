@@ -86,8 +86,10 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
     // Get decimals from mint info or supply
     const decimals = tokenInfo.decimals ?? supply?.decimals ?? 0;
     // Balance is in token_accounts[0].balance (nested array for DAS API)
+    // This is RAW lamports - need to divide by 10^decimals!
     const tokenAccounts = tokenInfo.token_accounts ?? [];
-    const balance = tokenAccounts[0]?.balance ?? tokenInfo.balance ?? supply?.amount ?? 0;
+    const rawBalance = tokenAccounts[0]?.balance ?? tokenInfo.balance ?? supply?.amount ?? 0;
+    const balance = rawBalance / Math.pow(10, decimals);  // Convert to human-readable
     
     if (balance <= 0) continue;
     
