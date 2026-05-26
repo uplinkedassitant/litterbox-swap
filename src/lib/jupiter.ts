@@ -349,7 +349,9 @@ export async function searchTokens(query: string): Promise<Token[]> {
   // Fallback: return popular tokens if API fails
   const queryLower = query.toLowerCase();
   const popularTokens: Token[] = [
+    { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Solana', decimals: 9, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/So11111111111111111111111111111111111111112/logo.png' },
     { mint: 'EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4', symbol: 'USDC', name: 'USD Coin', decimals: 6, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4/logo.png' },
+    { mint: 'D8tB7xXW5uLmXjKq5gR7iR5qV7J9Xw4T8nR6v2YkZcC3', symbol: 'USDT', name: 'Tether', decimals: 6, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4/logo.png' },
     { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Solana', decimals: 9, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/So11111111111111111111111111111111111111112/logo.png' },
     { mint: 'D8tB7xXW5uLmXjKq5gR7iR5qV7J9Xw4T8nR6v2YkZcC3', symbol: 'USDT', name: 'Tether', decimals: 6, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/D8tB7xXW5uLmXjKq5gR7iR5qV7J9Xw4T8nR6v2YkZcC3/logo.png' },
   ];
