@@ -202,7 +202,7 @@ export function StepReview() {
                   </div>
                 )}
                 {status === 'done' && error && (
-                  <span className="text-red-400 text-xs max-w-32 text-right block">❌ {error?.slice(0, 60)}</span>
+                  <span className="text-red-400 text-xs max-w-32 text-right block">❌ {String(error)?.slice(0, 60)}</span>
                 )}
               </div>
             </div>
