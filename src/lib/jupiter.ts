@@ -90,6 +90,7 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
     const tokenAccounts = tokenInfo.token_accounts ?? [];
     const rawBalance = tokenAccounts[0]?.balance ?? tokenInfo.balance ?? supply?.amount ?? 0;
     const balance = rawBalance / Math.pow(10, decimals);  // Convert to human-readable
+      console.log("[Litterbox]   -> From getAssetsByOwner, rawBalance:", rawBalance, "decimals:", decimals, "-> display:", balance);
     
     if (balance <= 0) continue;
     
@@ -208,6 +209,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
 
       if (uiAmount <= 0) continue;
       console.log("[Litterbox] Processing token:", mint.slice(0,8), "amount:", uiAmount);
+      console.log("[Litterbox]   -> From getTokenAccountsByOwner, balance:", uiAmount, "decimals:", decimals);
 
       const meta = tokenList.get(mint);
       tokens.push({
