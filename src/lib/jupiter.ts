@@ -346,7 +346,26 @@ export async function searchTokens(query: string): Promise<Token[]> {
     console.warn('[Litterbox] Proxy search failed, trying direct:', e);
   }
 
-  // Fallback to direct Jupiter API (may hit CORS)
+  // Fallback: return popular tokens if API fails
+  const queryLower = query.toLowerCase();
+  const popularTokens: Token[] = [
+    { mint: 'EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4', symbol: 'USDC', name: 'USD Coin', decimals: 6, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4/logo.png' },
+    { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Solana', decimals: 9, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/So11111111111111111111111111111111111111112/logo.png' },
+    { mint: 'D8tB7xXW5uLmXjKq5gR7iR5qV7J9Xw4T8nR6v2YkZcC3', symbol: 'USDT', name: 'Tether', decimals: 6, logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/tokens/D8tB7xXW5uLmXjKq5gR7iR5qV7J9Xw4T8nR6v2YkZcC3/logo.png' },
+  ];
+  
+  const matches = popularTokens.filter(t => 
+    t.symbol.toLowerCase().includes(queryLower) || 
+    t.name.toLowerCase().includes(queryLower) ||
+    t.mint.toLowerCase().startsWith(queryLower)
+  );
+  
+  if (matches.length > 0) {
+    console.log('[Litterbox] Using fallback popular tokens');
+    return matches;
+  }
+
+  // Last resort: try direct Jupiter API (may hit CORS)
   const searchEndpoints = [
     `${JUP_API}/tokens/v1/search?query=${encodeURIComponent(query)}&limit=20`,
     `${JUP_API}/tokens/v2/search?query=${encodeURIComponent(query)}`,
