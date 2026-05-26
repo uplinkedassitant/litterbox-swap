@@ -5,7 +5,11 @@ export function truncateAddress(addr: string, chars = 4): string {
 
 export function formatTokenAmount(amount: number, decimals: number): string {
   if (amount === 0) return '0';
-  const formatted = amount / Math.pow(10, decimals);
+  
+  // If amount is already small (< 1M), it's likely already human-readable
+  // Don't divide again - this prevents the double-division bug
+  let formatted = amount < 1_000_000 ? amount : amount / Math.pow(10, decimals);
+  
   if (formatted < 0.01) return '<0.01';
   if (formatted >= 1_000_000) return `${(formatted / 1_000_000).toFixed(2)}M`;
   if (formatted >= 1_000) return `${(formatted / 1_000).toFixed(2)}K`;
