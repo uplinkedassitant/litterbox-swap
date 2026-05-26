@@ -81,7 +81,7 @@ async function fetchTokensViaHeliusAssets(walletAddress: string): Promise<Token[
     const tokenInfo = item.token_info ?? {};
     
     // Debug: log structure
-    console.log('[Litterbox]   Token info - iface:', iface, 'mint:', mint.slice(0,8), 'token_info:', JSON.stringify(tokenInfo).slice(0,100));
+    console.log('[Litterbox]   Token info - iface:', iface, 'mint:', mint?.slice(0,8), 'token_info:', JSON.stringify(tokenInfo).slice(0,100));
     
     // Get decimals from mint info or supply
     const decimals = tokenInfo.decimals ?? supply?.decimals ?? 0;
@@ -187,7 +187,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
     console.log('[Litterbox] Found via getAssetsByOwner:', heliusTokens.length);
     // Debug: print first few
     for (const t of heliusTokens.slice(0,3)) {
-      console.log('[Litterbox]   Token:', t.symbol, t.mint.slice(0,12), 'bal:', t.balance);
+      console.log('[Litterbox]   Token:', t.symbol, t?.mint?.slice(0,12), 'bal:', t.balance);
     }
   } catch (e) {
     console.log('[Litterbox] getAssetsByOwner failed:', e instanceof Error ? e.message : String(e));
@@ -208,7 +208,7 @@ export async function getPortfolioPositions(walletAddress: string): Promise<Toke
       const decimals: number = info.tokenAmount?.decimals ?? 0;
 
       if (uiAmount <= 0) continue;
-      console.log("[Litterbox] Processing token:", mint.slice(0,8), "amount:", uiAmount);
+      console.log("[Litterbox] Processing token:", mint?.slice(0,8), "amount:", uiAmount);
       console.log("[Litterbox]   -> From getTokenAccountsByOwner, balance:", uiAmount, "decimals:", decimals);
 
       const meta = tokenList.get(mint);
@@ -307,7 +307,7 @@ async function getDexScreenerPrices(mints: string[]): Promise<Record<string, num
           
           if (bestPair?.priceUsd) {
             prices[mint] = parseFloat(bestPair.priceUsd);
-            console.log('[Litterbox] DexScreener price for', mint.slice(0,8), ':', bestPair.priceUsd);
+            console.log('[Litterbox] DexScreener price for', mint?.slice(0,8), ':', bestPair.priceUsd);
           }
         }
       }
@@ -404,7 +404,7 @@ export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
         const bestPair = pairs[0]; // Use first pair
         const baseToken = bestPair?.baseToken;
         if (baseToken) {
-          console.log('[Litterbox] DexScreener metadata for', mint.slice(0,8), ':', baseToken.symbol);
+          console.log('[Litterbox] DexScreener metadata for', mint?.slice(0,8), ':', baseToken.symbol);
           return {
             mint: mint,
             symbol: baseToken.symbol || 'Unknown',
