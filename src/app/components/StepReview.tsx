@@ -84,7 +84,7 @@ export function StepReview() {
 
         const quote = await getSwapQuote({
           inputMint: token.mint,
-          outputMint: targetToken.mint,
+          outputMint: targetToken?.mint || '',
           amount: amountRaw,
           slippageBps,
           wallet: publicKey.toBase58(),

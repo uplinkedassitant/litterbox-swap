@@ -431,6 +431,11 @@ export async function getSwapQuote(params: {
 }): Promise<SwapQuote> {
   const { inputMint, outputMint, amount, slippageBps, wallet } = params;
 
+  // Validate mints
+  if (!inputMint || !outputMint || inputMint === 'undefined' || outputMint === 'undefined') {
+    throw new Error('Invalid token mint - please re-select tokens');
+  }
+
   const SOL_MINT = 'So11111111111111111111111111111111111111112';
   const USDC_MINT = 'EPjFWdd5AufqSSqeM2qNxtxrmQ1L3b2DvNU1tcg6Vo4';
   
