@@ -324,6 +324,29 @@ export const getTokenPrice = getTokenPrices;
 export async function searchTokens(query: string): Promise<Token[]> {
   if (!query || query.length < 2) return [];
 
+  // Try our backend proxy first to avoid CORS
+  const proxyUrl = `/api/jupiter-search?query=${encodeURIComponent(query)}&limit=20`;
+  
+  try {
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const data = await res.json();
+      const raw = Array.isArray(data) ? data : (data.tokens ?? []);
+      if (raw.length > 0) {
+        return raw.slice(0, 20).map((t: any) => ({
+          mint: t.address || t.mint,
+          symbol: t.symbol || 'Unknown',
+          name: t.name || t.symbol || 'Unknown Token',
+          decimals: t.decimals ?? 0,
+          logoURI: t.logoURI || t.icon || undefined,
+        }));
+      }
+    }
+  } catch (e) {
+    console.warn('[Litterbox] Proxy search failed, trying direct:', e);
+  }
+
+  // Fallback to direct Jupiter API (may hit CORS)
   const searchEndpoints = [
     `${JUP_API}/tokens/v1/search?query=${encodeURIComponent(query)}&limit=20`,
     `${JUP_API}/tokens/v2/search?query=${encodeURIComponent(query)}`,
@@ -369,7 +392,24 @@ export async function getJupiterTokenInfo(mint: string): Promise<Token | null> {
   const tokenList = await getTokenList();
   if (tokenList.has(mint)) return tokenList.get(mint)!;
 
-  // Try Jupiter token API
+  // Try our backend proxy first to avoid CORS
+  try {
+    const res = await fetch(`/api/jupiter-token?mint=${encodeURIComponent(mint)}`);
+    if (res.ok) {
+      const t = await res.json();
+      return {
+        mint: t.address || t.mint || mint,
+        symbol: t.symbol || 'Unknown',
+        name: t.name || t.symbol || 'Unknown Token',
+        decimals: t.decimals ?? 0,
+        logoURI: t.logoURI || t.icon || undefined,
+      };
+    }
+  } catch (e) {
+    console.warn('[Litterbox] Token proxy failed:', e);
+  }
+
+  // Fallback to direct Jupiter API (may hit CORS)
   const lookupEndpoints = [
     `${JUP_API}/tokens/v1/${mint}`,
     `${JUP_API}/tokens/v1/search?query=${mint}&limit=5`,
