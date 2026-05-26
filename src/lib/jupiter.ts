@@ -526,14 +526,31 @@ export async function getSwapQuote(params: {
       : await getQuote(inputMint, SOL_MINT);
     
     if (viaSol) {
-      console.log('[Litterbox] Via SOL route found!');
+      console.log('[Litterbox] Via SOL route found, building transaction...');
+      
+      // Build the swap transaction for the via-SOL route
+      const swapRes = await fetch(`${JUP_API}/swap/v1/swap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...jupHeaders },
+        body: JSON.stringify({
+          quoteResponse: viaSol,
+          userPublicKey: wallet,
+          wrapAndUnwrapSol: true,
+        }),
+      });
+      
+      if (!swapRes.ok) {
+        throw new Error(`Via-SOL swap build failed: ${swapRes.status}`);
+      }
+      
+      const swapData = await swapRes.json();
       return {
         inputMint,
         outputMint,
         inputAmount: amount,
         estimatedOutput: parseFloat(viaSol.outAmount || '0'),
         priceImpactPct: parseFloat(viaSol.priceImpactPct || '0'),
-        swapTransaction: undefined,
+        swapTransaction: swapData.swapTransaction,
       };
     }
   }
